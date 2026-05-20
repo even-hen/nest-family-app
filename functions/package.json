@@ -1,0 +1,11 @@
+{
+  "name": "nest-functions",
+  "description": "Firebase Cloud Functions for Nest family app",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^6.0.0"
+  },
+  "private": true
+}

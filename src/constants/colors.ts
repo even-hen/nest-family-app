@@ -1,0 +1,74 @@
+export const Colors = {
+  // Primary brand - deep indigo/violet
+  primary: '#7C5CFC',
+  primaryLight: '#9B85FD',
+  primaryDark: '#5A3FD4',
+
+  // Accent - warm coral
+  accent: '#FF6B6B',
+  accentLight: '#FF9A9A',
+
+  // Success - mint green
+  success: '#4ECDC4',
+  successLight: '#7EDDD6',
+
+  // Warning - amber
+  warning: '#FFB347',
+  warningLight: '#FFC97A',
+
+  // Background layers
+  bg: '#0F0E1A',
+  bgCard: '#1A1828',
+  bgCardAlt: '#221F35',
+  bgInput: '#2A2640',
+
+  // Borders
+  border: '#2E2A45',
+  borderLight: '#3D3860',
+
+  // Text
+  textPrimary: '#F0EEFF',
+  textSecondary: '#9B97C0',
+  textMuted: '#5E5A80',
+
+  // Status colors
+  pending: '#FFB347',
+  done: '#4ECDC4',
+  skipped: '#FF6B6B',
+
+  // User type badge colors
+  adult: '#7C5CFC',
+  teen: '#4ECDC4',
+  child: '#FF9A9A',
+
+  // Gradient stops (for LinearGradient)
+  gradientStart: '#7C5CFC',
+  gradientEnd: '#5A3FD4',
+
+  // Tab bar
+  tabActive: '#7C5CFC',
+  tabInactive: '#5E5A80',
+};
+
+export const Fonts = {
+  regular: 'System',
+  medium: 'System',
+  bold: 'System',
+};
+
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
+};
+
+export const Radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  full: 9999,
+};
