@@ -31,6 +31,21 @@ export default function SettingsScreen() {
 
   const isAdult = user?.type === 'Adult';
 
+  React.useEffect(() => {
+    async function fetchGroupSettings() {
+      if (!user?.groupId || !isAdult) return;
+      try {
+        const groupSnap = await getDoc(doc(db, 'groups', user.groupId));
+        if (groupSnap.exists()) {
+          setAutoDistrib(groupSnap.data()?.autoDistribution ?? true);
+        }
+      } catch (e) {
+        console.error('Failed to fetch group settings', e);
+      }
+    }
+    fetchGroupSettings();
+  }, [user?.groupId, isAdult]);
+
   const generateInviteLink = async () => {
     if (!user?.groupId) return;
     setGeneratingLink(true);
@@ -85,6 +100,19 @@ export default function SettingsScreen() {
       Alert.alert('Error', 'Could not update language');
     } finally {
       setSavingLang(false);
+    }
+  };
+
+  const handleAutoDistribToggle = async (val: boolean) => {
+    if (!user?.groupId) return;
+    setLoadingAutoDistrib(true);
+    try {
+      await updateDoc(doc(db, 'groups', user.groupId), { autoDistribution: val });
+      setAutoDistrib(val);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not update auto-distribution');
+    } finally {
+      setLoadingAutoDistrib(false);
     }
   };
 
@@ -227,9 +255,26 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Adult-only: Invite */}
+        {/* Adult-only: Invite & Auto-distribute */}
         {isAdult && (
           <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Group Automation</Text>
+              <Text style={styles.sectionDesc}>Manage how tasks are assigned</Text>
+              <View style={[styles.langRow, { justifyContent: 'space-between', alignItems: 'center' }]}>
+                <Text style={{ color: Colors.textPrimary, fontSize: 15 }}>Auto-distribute tasks</Text>
+                {loadingAutoDistrib ? (
+                  <ActivityIndicator color={Colors.primary} />
+                ) : (
+                  <Switch
+                    value={autoDistrib}
+                    onValueChange={handleAutoDistribToggle}
+                    trackColor={{ false: Colors.border, true: Colors.primary }}
+                  />
+                )}
+              </View>
+            </View>
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Invite Members</Text>
               <Text style={styles.sectionDesc}>Generate a 24-hour invite code for family members</Text>
