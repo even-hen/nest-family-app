@@ -40,6 +40,7 @@ export interface Task {
   weekDays: number[]; // 0=Sun..6=Sat (active weekdays for scheduling)
   availableFor: UserType[]; // which user types can be assigned
   assignedTo: string | null; // userId or null (unassigned)
+  auto: boolean; // true if auto assignee is enabled, false if manually assigned
   isActive: boolean;
   createdBy: string;
   createdAt: Date;

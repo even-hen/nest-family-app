@@ -28,11 +28,13 @@ function AssignmentCard({
   assignment,
   showAssignee,
   assigneeName,
+  canMarkDone,
   onMarkDone,
 }: {
   assignment: Assignment;
   showAssignee: boolean;
   assigneeName: string;
+  canMarkDone: boolean;
   onMarkDone: (id: string) => void;
 }) {
   const { Colors } = useAppTheme();
@@ -53,14 +55,14 @@ function AssignmentCard({
         </View>
       </View>
       <View style={styles.cardRight}>
-        {assignment.status !== 'pending' && (
+        {(assignment.status !== 'pending' || !canMarkDone) && (
           <View style={styles.statusBadge}>
             <Text style={[styles.statusText, { color: getStatusColor(assignment.status, Colors) }]}>
               {STATUS_LABELS[assignment.status]}
             </Text>
           </View>
         )}
-        {isPending && (
+        {isPending && canMarkDone && (
           <TouchableOpacity
             style={styles.doneBtn}
             onPress={() => onMarkDone(assignment.id)}
@@ -133,6 +135,13 @@ export default function AssignmentsScreen() {
   };
 
   const handleMarkDone = async (id: string) => {
+    const assignment = assignments.find((a) => a.id === id);
+    if (!assignment) return;
+    const canMarkDone = assignment.assignedTo === user?.id || user?.type === 'Adult';
+    if (!canMarkDone) {
+      Alert.alert('Permission Denied', 'Only adults can mark other members\' tasks as completed.');
+      return;
+    }
     try {
       await updateDoc(doc(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS, id), { status: 'done', doneAt: Timestamp.now() });
       setAssignments((prev) =>
@@ -217,6 +226,7 @@ export default function AssignmentsScreen() {
               <AssignmentCard
                 key={a.id} assignment={a} showAssignee={showAll}
                 assigneeName={users[a.assignedTo] ?? '—'}
+                canMarkDone={a.assignedTo === user?.id || user?.type === 'Adult'}
                 onMarkDone={handleMarkDone}
               />
             ))}
@@ -230,6 +240,7 @@ export default function AssignmentsScreen() {
               <AssignmentCard
                 key={a.id} assignment={a} showAssignee={showAll}
                 assigneeName={users[a.assignedTo] ?? '—'}
+                canMarkDone={a.assignedTo === user?.id || user?.type === 'Adult'}
                 onMarkDone={handleMarkDone}
               />
             ))}
@@ -243,6 +254,7 @@ export default function AssignmentsScreen() {
               <AssignmentCard
                 key={a.id} assignment={a} showAssignee={showAll}
                 assigneeName={users[a.assignedTo] ?? '—'}
+                canMarkDone={a.assignedTo === user?.id || user?.type === 'Adult'}
                 onMarkDone={handleMarkDone}
               />
             ))}

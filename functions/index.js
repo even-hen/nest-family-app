@@ -65,23 +65,50 @@ exports.weeklyDistribution = onSchedule('0 1 * * 1', async () => {
     if (users.length === 0 || tasks.length === 0) continue;
 
     // Auto-distribute (proportional by resource)
-    const totalResource = users.reduce((s, u) => s + u.resource, 0);
+    const totalResource = users.reduce((s, u) => s + Number(u.resource || 0), 0);
     const totalCost = tasks.reduce((s, t) => s + getTaskWeeklyCost(t), 0);
     const capacity = {};
-    users.forEach((u) => { capacity[u.id] = totalResource > 0 ? (u.resource / totalResource) * totalCost : 0; });
-
-    const sorted = [...tasks].sort((a, b) => getTaskWeeklyCost(b) - getTaskWeeklyCost(a));
+    users.forEach((u) => { capacity[u.id] = totalResource > 0 ? (Number(u.resource || 0) / totalResource) * totalCost : 0; });
 
     const assignments = [];
     const unassigned = [];
 
-    for (const task of sorted) {
+    // Separate tasks: manual (auto = false) and auto (auto = true)
+    const manualTasks = tasks.filter((t) => !t.auto);
+    const autoTasks = tasks.filter((t) => t.auto);
+
+    // 1. Process manual assignments first (occupy capacities)
+    for (const task of manualTasks) {
+      if (task.assignedTo) {
+        const cost = getTaskWeeklyCost(task);
+        capacity[task.assignedTo] = (capacity[task.assignedTo] ?? 0) - cost;
+        assignments.push({ task, assignedTo: task.assignedTo });
+      } else {
+        unassigned.push(task);
+      }
+    }
+
+    // 2. Sort auto tasks by cost descending (with slight random jitter to prevent static repetition)
+    const sortedAutoTasks = [...autoTasks].sort((a, b) => {
+      const diff = getTaskWeeklyCost(b) - getTaskWeeklyCost(a);
+      return diff + (Math.random() - 0.5) * 10;
+    });
+
+    // 3. Process auto assignments
+    for (const task of sortedAutoTasks) {
       const eligible = users.filter((u) =>
         task.availableFor.length === 0 || task.availableFor.includes(u.type)
       );
       if (eligible.length === 0) { unassigned.push(task); continue; }
 
-      const best = eligible.reduce((p, c) => (capacity[c.id] ?? 0) > (capacity[p.id] ?? 0) ? c : p);
+      // Randomize array for exact capacity ties
+      eligible.sort(() => Math.random() - 0.5);
+
+      const best = eligible.reduce((p, c) => {
+        const capCurr = (capacity[c.id] ?? 0) + (Math.random() - 0.5) * 5;
+        const capPrev = (capacity[p.id] ?? 0) + (Math.random() - 0.5) * 5;
+        return capCurr > capPrev ? c : p;
+      });
       capacity[best.id] -= getTaskWeeklyCost(task);
       assignments.push({ task, assignedTo: best.id });
     }

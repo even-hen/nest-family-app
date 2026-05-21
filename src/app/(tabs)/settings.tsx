@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Alert, Switch, ActivityIndicator,
@@ -29,22 +29,35 @@ export default function SettingsScreen() {
   const [loadingAutoDistrib, setLoadingAutoDistrib] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  const isAdult = user?.type === 'Adult';
-
-  React.useEffect(() => {
-    async function fetchGroupSettings() {
-      if (!user?.groupId || !isAdult) return;
+  useEffect(() => {
+    const fetchGroupSettings = async () => {
+      if (!user?.groupId) return;
       try {
         const groupSnap = await getDoc(doc(db, 'groups', user.groupId));
         if (groupSnap.exists()) {
-          setAutoDistrib(groupSnap.data()?.autoDistribution ?? true);
+          setAutoDistrib(groupSnap.data()?.autoDistribution ?? false);
         }
       } catch (e) {
-        console.error('Failed to fetch group settings', e);
+        console.error('Error fetching group settings:', e);
       }
-    }
+    };
     fetchGroupSettings();
-  }, [user?.groupId, isAdult]);
+  }, [user?.groupId]);
+
+  const toggleAutoDistrib = async (value: boolean) => {
+    if (!user?.groupId || user.type !== 'Adult') return;
+    setLoadingAutoDistrib(true);
+    try {
+      await updateDoc(doc(db, 'groups', user.groupId), { autoDistribution: value });
+      setAutoDistrib(value);
+    } catch (e) {
+      Alert.alert('Error', 'Could not update auto-distribution setting');
+    } finally {
+      setLoadingAutoDistrib(false);
+    }
+  };
+
+  const isAdult = user?.type === 'Adult';
 
   const generateInviteLink = async () => {
     if (!user?.groupId) return;
@@ -103,19 +116,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleAutoDistribToggle = async (val: boolean) => {
-    if (!user?.groupId) return;
-    setLoadingAutoDistrib(true);
-    try {
-      await updateDoc(doc(db, 'groups', user.groupId), { autoDistribution: val });
-      setAutoDistrib(val);
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not update auto-distribution');
-    } finally {
-      setLoadingAutoDistrib(false);
-    }
-  };
-
   const handleLeaveGroup = () => {
     Alert.alert(
       'Leave Group',
@@ -159,7 +159,7 @@ export default function SettingsScreen() {
             <Text style={styles.profileEmail}>{user?.email}</Text>
             <View style={[styles.roleBadge, { backgroundColor: getRoleColor(user?.type, Colors) + '15', borderWidth: 1, borderColor: getRoleColor(user?.type, Colors) + '30' }]}>
               <Text style={[styles.roleText, { color: getRoleColor(user?.type, Colors) }]}>
-                {user?.type} · {user?.resource}% capacity
+                {user?.type} · {user?.resource} capacity
               </Text>
             </View>
           </View>
@@ -255,26 +255,30 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Adult-only: Invite & Auto-distribute */}
+        {/* Auto-distribute setting */}
+        <View style={styles.section}>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={styles.sectionTitle}>Auto-distribute tasks</Text>
+              <Text style={styles.sectionDesc}>Automatically assign unassigned active tasks at the beginning of a new week</Text>
+            </View>
+            {loadingAutoDistrib ? (
+              <ActivityIndicator color={Colors.primary} size="small" />
+            ) : (
+              <Switch
+                value={autoDistrib}
+                onValueChange={toggleAutoDistrib}
+                disabled={user?.type !== 'Adult'}
+                trackColor={{ true: Colors.primary, false: Colors.bgInput }}
+                thumbColor={autoDistrib ? Colors.primaryLight : Colors.textMuted}
+              />
+            )}
+          </View>
+        </View>
+
+        {/* Adult-only: Invite */}
         {isAdult && (
           <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Group Automation</Text>
-              <Text style={styles.sectionDesc}>Manage how tasks are assigned</Text>
-              <View style={[styles.langRow, { justifyContent: 'space-between', alignItems: 'center' }]}>
-                <Text style={{ color: Colors.textPrimary, fontSize: 15 }}>Auto-distribute tasks</Text>
-                {loadingAutoDistrib ? (
-                  <ActivityIndicator color={Colors.primary} />
-                ) : (
-                  <Switch
-                    value={autoDistrib}
-                    onValueChange={handleAutoDistribToggle}
-                    trackColor={{ false: Colors.border, true: Colors.primary }}
-                  />
-                )}
-              </View>
-            </View>
-
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Invite Members</Text>
               <Text style={styles.sectionDesc}>Generate a 24-hour invite code for family members</Text>
@@ -365,6 +369,7 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   dropdownItemText: { color: Colors.textSecondary, fontSize: 14, fontWeight: '500' },
   dropdownItemTextActive: { color: Colors.primary, fontWeight: '600' },
   langRow: { flexDirection: 'row', gap: Spacing.sm },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   langBtn: {
     flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md,
     alignItems: 'center', borderWidth: 1, borderColor: Colors.border,

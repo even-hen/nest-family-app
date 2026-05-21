@@ -56,6 +56,18 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="stats"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              iconName={focused ? 'bar-chart' : 'bar-chart-outline'}
+              label="Stats"
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="tasks"
         options={{
           tabBarIcon: ({ focused }) => (
@@ -74,18 +86,6 @@ export default function TabsLayout() {
             <TabIcon
               iconName={focused ? 'people' : 'people-outline'}
               label="Family"
-              focused={focused}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="stats"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon
-              iconName={focused ? 'bar-chart' : 'bar-chart-outline'}
-              label="Stats"
               focused={focused}
             />
           ),

@@ -30,7 +30,8 @@ interface TaskAssignment {
  */
 export function autoDistributeTasks(
   tasks: Task[],
-  users: AssignableUser[]
+  users: AssignableUser[],
+  randomize: boolean = false
 ): { assignments: TaskAssignment[]; unassigned: Task[] } {
   if (users.length === 0) {
     return {
@@ -42,27 +43,43 @@ export function autoDistributeTasks(
   const activeTasks = tasks.filter((t) => t.isActive);
 
   // Calculate total resource units across all users
-  const totalResource = users.reduce((sum, u) => sum + u.resource, 0);
+  const totalResource = users.reduce((sum, u) => sum + Number(u.resource || 0), 0);
 
   // Remaining capacity for each user (in complexity points)
-  // We'll use a soft cap: each user gets a proportional share of total work
   const totalWeeklyCost = activeTasks.reduce((sum, t) => sum + getTaskWeeklyCost(t), 0);
 
   const userCapacity: Record<string, number> = {};
   for (const user of users) {
     userCapacity[user.id] =
-      totalResource > 0 ? (user.resource / totalResource) * totalWeeklyCost : 0;
+      totalResource > 0 ? (Number(user.resource || 0) / totalResource) * totalWeeklyCost : 0;
   }
-
-  // Sort tasks by cost descending (assign heavier tasks first for better balance)
-  const sortedTasks = [...activeTasks].sort(
-    (a, b) => getTaskWeeklyCost(b) - getTaskWeeklyCost(a)
-  );
 
   const assignments: TaskAssignment[] = [];
   const unassigned: Task[] = [];
 
-  for (const task of sortedTasks) {
+  // Separate tasks: manual (auto = false) and auto (auto = true)
+  const manualTasks = activeTasks.filter((t) => !t.auto);
+  const autoTasks = activeTasks.filter((t) => t.auto);
+
+  // 1. Process manual assignments first (occupy capacities)
+  for (const task of manualTasks) {
+    if (task.assignedTo) {
+      const cost = getTaskWeeklyCost(task);
+      userCapacity[task.assignedTo] = (userCapacity[task.assignedTo] ?? 0) - cost;
+      assignments.push({ taskId: task.id, assignedTo: task.assignedTo });
+    } else {
+      unassigned.push(task);
+    }
+  }
+
+  // 2. Sort auto tasks by cost descending (with slight jitter if mixing)
+  const sortedAutoTasks = [...autoTasks].sort((a, b) => {
+    const diff = getTaskWeeklyCost(b) - getTaskWeeklyCost(a);
+    return randomize ? diff + (Math.random() - 0.5) * 10 : diff;
+  });
+
+  // 3. Process auto assignments
+  for (const task of sortedAutoTasks) {
     // Filter eligible users by task availability constraints
     const eligibleUsers = users.filter(
       (u) => task.availableFor.length === 0 || task.availableFor.includes(u.type)
@@ -73,10 +90,16 @@ export function autoDistributeTasks(
       continue;
     }
 
+    if (randomize) {
+      eligibleUsers.sort(() => Math.random() - 0.5); // Randomize array for exact capacity ties
+    }
+
     // Pick the eligible user with the most remaining capacity
-    const best = eligibleUsers.reduce((prev, curr) =>
-      (userCapacity[curr.id] ?? 0) > (userCapacity[prev.id] ?? 0) ? curr : prev
-    );
+    const best = eligibleUsers.reduce((prev, curr) => {
+      const capCurr = (userCapacity[curr.id] ?? 0) + (randomize ? (Math.random() - 0.5) * 5 : 0);
+      const capPrev = (userCapacity[prev.id] ?? 0) + (randomize ? (Math.random() - 0.5) * 5 : 0);
+      return capCurr > capPrev ? curr : prev;
+    });
 
     const cost = getTaskWeeklyCost(task);
     userCapacity[best.id] = (userCapacity[best.id] ?? 0) - cost;
@@ -103,8 +126,8 @@ export function calculateResourceUsage(
     .reduce((sum, t) => sum + getTaskWeeklyCost(t), 0);
 
   const totalCost = activeTasks.reduce((sum, t) => sum + getTaskWeeklyCost(t), 0);
-  const totalResource = allUsers.reduce((s, u) => s + u.resource, 0);
-  const userShare = totalResource > 0 ? (userResource / totalResource) * totalCost : 0;
+  const totalResource = allUsers.reduce((s, u) => s + Number(u.resource || 0), 0);
+  const userShare = totalResource > 0 ? (Number(userResource || 0) / totalResource) * totalCost : 0;
 
   if (userShare === 0) return 0;
   return Math.min(100, Math.round((assignedCost / userShare) * 100));

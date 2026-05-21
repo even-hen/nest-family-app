@@ -1,20 +1,22 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Modal, TextInput, Alert, ActivityIndicator, Switch, RefreshControl,
+  Modal, TextInput, Alert, ActivityIndicator, Switch, RefreshControl, Platform,
 } from 'react-native';
 import {
   collection, query, where, getDocs, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp,
+  doc, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
-import { Task, UserType } from '../../types';
+import { Task, UserType, User, Assignment } from '../../types';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { getTypeColor } from '../../utils/colors';
 import { USER_TYPES, DAYS_OF_WEEK, ALL_WEEK_DAYS, FIRESTORE_COLLECTIONS } from '../../constants/domain';
+import { autoDistributeTasks } from '../../lib/distribution';
+import { getMondayISO } from '../../utils/date';
 
 function TaskCard({
   task, users, onEdit, canEdit,
@@ -52,12 +54,21 @@ function TaskCard({
       <View style={styles.availRow}>
         {task.assignedTo && (
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              Assigned: {users[task.assignedTo] ?? '—'}
-            </Text>
+            {task.auto ? (
+              <Text style={styles.badgeText}>
+                Assignee:{' '}
+                <Text style={{ color: 'rgb(255, 179, 71)', fontWeight: '600' }}>
+                  {users[task.assignedTo] ?? '—'}
+                </Text>
+              </Text>
+            ) : (
+              <Text style={styles.badgeText}>
+                Assigned: {users[task.assignedTo] ?? '—'}
+              </Text>
+            )}
           </View>
         )}
-        {task.availableFor.map((t) => (
+        {task.auto && task.availableFor.map((t) => (
           <View key={t} style={[styles.typePill, { backgroundColor: getTypeColor(t, Colors) + '15', borderColor: getTypeColor(t, Colors) + '30', borderWidth: 1 }]}>
             <Text style={[styles.typePillText, { color: getTypeColor(t, Colors) }]}>{t}</Text>
           </View>
@@ -80,6 +91,7 @@ export default function TasksScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [groupUsers, setGroupUsers] = useState<Record<string, string>>({});
   const [usersList, setUsersList] = useState<{ id: string; name: string }[]>([]);
+  const [fullUsersList, setFullUsersList] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -103,11 +115,19 @@ export default function TasksScreen() {
       return a.isActive ? -1 : 1;
     });
     setTasks(loadedTasks);
+    
     const nameMap: Record<string, string> = {};
     const list: { id: string; name: string }[] = [];
-    usersSnap.docs.forEach((d) => { nameMap[d.id] = d.data().name; list.push({ id: d.id, name: d.data().name }); });
+    const fullList: User[] = [];
+    usersSnap.docs.forEach((d) => {
+      const uData = { id: d.id, ...d.data() } as User;
+      nameMap[d.id] = uData.name;
+      list.push({ id: d.id, name: uData.name });
+      fullList.push(uData);
+    });
     setGroupUsers(nameMap);
     setUsersList(list);
+    setFullUsersList(fullList);
   }, [user?.groupId]);
 
   useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
@@ -120,7 +140,7 @@ export default function TasksScreen() {
     setForm({
       title: t.title, complexity: String(t.complexity),
       weekDays: t.weekDays || [], availableFor: t.availableFor,
-      assignedTo: t.assignedTo, isActive: t.isActive,
+      assignedTo: t.auto ? null : t.assignedTo, isActive: t.isActive,
     });
     setModalVisible(true);
   };
@@ -132,20 +152,152 @@ export default function TasksScreen() {
     if (!user?.groupId) return;
     setSaving(true);
     try {
+      const auto = form.assignedTo === null;
+      let finalAssignedTo = form.assignedTo;
+
+      const activeDays = form.weekDays.length === 0 ? [...ALL_WEEK_DAYS] : form.weekDays;
+
+      if (auto && form.isActive) {
+        // Construct temporary list of active tasks including this one to run distribution
+        const tempTaskId = editingTask ? editingTask.id : 'temp-new-task';
+        const otherActiveTasks = tasks
+          .filter((t) => t.isActive && (editingTask ? t.id !== editingTask.id : true))
+          .map((t) => ({ ...t }));
+        
+        otherActiveTasks.push({
+          id: tempTaskId,
+          groupId: user.groupId,
+          title: form.title.trim(),
+          complexity: c,
+          weekDays: activeDays,
+          availableFor: form.availableFor.length === 0 ? [...USER_TYPES] : form.availableFor,
+          assignedTo: null,
+          auto: true,
+          isActive: true,
+          createdBy: user.id,
+          createdAt: new Date(),
+        });
+
+        const assignableUsers = fullUsersList.map((u) => ({
+          id: u.id,
+          type: u.type,
+          resource: u.resource,
+        }));
+
+        const { assignments: distResult } = autoDistributeTasks(otherActiveTasks, assignableUsers);
+        const matched = distResult.find((a) => a.taskId === tempTaskId);
+        finalAssignedTo = matched ? matched.assignedTo : null;
+      }
+
       const data = {
-        title: form.title.trim(), complexity: c,
-        weekDays: form.weekDays.length === 0 ? [...ALL_WEEK_DAYS] : form.weekDays,
+        title: form.title.trim(),
+        complexity: c,
+        weekDays: activeDays,
         availableFor: form.availableFor.length === 0 ? [...USER_TYPES] : form.availableFor,
-        assignedTo: form.assignedTo,
+        assignedTo: finalAssignedTo,
+        auto,
         isActive: form.isActive,
       };
+
+      let savedTaskId = '';
       if (editingTask) {
+        savedTaskId = editingTask.id;
         await updateDoc(doc(db, 'tasks', editingTask.id), data);
       } else {
-        await addDoc(collection(db, 'tasks'), {
-          ...data, groupId: user.groupId, createdBy: user.id, createdAt: serverTimestamp(),
+        const docRef = await addDoc(collection(db, 'tasks'), {
+          ...data,
+          groupId: user.groupId,
+          createdBy: user.id,
+          createdAt: serverTimestamp(),
         });
+        savedTaskId = docRef.id;
       }
+
+      // Sync weekly assignments for today and future days
+      const weekStartStr = getMondayISO(new Date());
+      const assignmentsSnap = await getDocs(
+        query(
+          collection(db, 'assignments'),
+          where('taskId', '==', savedTaskId),
+          where('weekStart', '==', weekStartStr)
+        )
+      );
+      const existingAssignments = assignmentsSnap.docs.map(
+        (d) => ({ id: d.id, ...d.data() } as Assignment)
+      );
+
+      const todayDateISO = new Date().toISOString().split('T')[0];
+      const todayDayIndex = new Date().getDay();
+      const getWeekDayOrderIndex = (idx: number) => (idx === 0 ? 6 : idx - 1);
+      const todayOrder = getWeekDayOrderIndex(todayDayIndex);
+
+      const getDateForWeekday = (weekStart: string, idx: number) => {
+        const d = new Date(weekStart);
+        const offset = idx === 0 ? 6 : idx - 1;
+        d.setDate(d.getDate() + offset);
+        return d.toISOString().split('T')[0];
+      };
+
+      if (form.isActive) {
+        // We only create/update assignments for today and future days
+        for (const dayIndex of activeDays) {
+          const dateISO = getDateForWeekday(weekStartStr, dayIndex);
+          const isTodayOrFuture = getWeekDayOrderIndex(dayIndex) >= todayOrder;
+
+          if (isTodayOrFuture) {
+            const existing = existingAssignments.find((a) => a.date === dateISO);
+
+            if (existing) {
+              // Update only pending assignments
+              if (existing.status === 'pending') {
+                await updateDoc(doc(db, 'assignments', existing.id), {
+                  assignedTo: finalAssignedTo,
+                  title: form.title.trim(),
+                  complexity: c,
+                  weekDays: activeDays,
+                });
+              }
+            } else {
+              // Create new assignment
+              await addDoc(collection(db, 'assignments'), {
+                taskId: savedTaskId,
+                groupId: user.groupId,
+                title: form.title.trim(),
+                complexity: c,
+                weekDays: activeDays,
+                assignedTo: finalAssignedTo,
+                status: 'pending',
+                weekStart: weekStartStr,
+                date: dateISO,
+                doneAt: null,
+                skippedAt: null,
+                createdAt: serverTimestamp(),
+              });
+            }
+          }
+        }
+
+        // Delete any pending assignments for days that are today/future but are NO LONGER in activeDays
+        for (const existing of existingAssignments) {
+          const dayIdx = new Date(existing.date).getDay();
+          const isTodayOrFuture = getWeekDayOrderIndex(dayIdx) >= todayOrder;
+          const isNotActiveAnymore = !activeDays.includes(dayIdx);
+
+          if (isTodayOrFuture && isNotActiveAnymore && existing.status === 'pending') {
+            await deleteDoc(doc(db, 'assignments', existing.id));
+          }
+        }
+      } else {
+        // If task is inactive, delete all pending assignments for today/future
+        for (const existing of existingAssignments) {
+          const dayIdx = new Date(existing.date).getDay();
+          const isTodayOrFuture = getWeekDayOrderIndex(dayIdx) >= todayOrder;
+          if (isTodayOrFuture && existing.status === 'pending') {
+            await deleteDoc(doc(db, 'assignments', existing.id));
+          }
+        }
+      }
+
       await loadData();
       setModalVisible(false);
     } catch (e: any) {
@@ -163,6 +315,23 @@ export default function TasksScreen() {
         onPress: async () => {
           try {
             await deleteDoc(doc(db, 'tasks', id));
+            
+            // Delete pending assignments for today/future
+            const weekStartStr = getMondayISO(new Date());
+            const todayDateISO = new Date().toISOString().split('T')[0];
+            const snap = await getDocs(query(
+              collection(db, 'assignments'),
+              where('taskId', '==', id),
+              where('weekStart', '==', weekStartStr)
+            ));
+            
+            const deletePromises = snap.docs
+              .map((d) => ({ id: d.id, ...d.data() } as Assignment))
+              .filter((a) => a.status === 'pending' && a.date >= todayDateISO)
+              .map((a) => deleteDoc(doc(db, 'assignments', a.id)));
+              
+            await Promise.all(deletePromises);
+
             setTasks((prev) => prev.filter((t) => t.id !== id));
             setModalVisible(false);
           } catch (e: any) {
@@ -189,6 +358,138 @@ export default function TasksScreen() {
     }));
   };
 
+  const [mixing, setMixing] = useState(false);
+
+  const handleMixTasks = async () => {
+    if (!user?.groupId || user.type !== 'Adult') return;
+
+    const runShuffle = async () => {
+      setMixing(true);
+            try {
+              // 1. Fetch latest active tasks and users
+              const [tasksSnap, usersSnap] = await Promise.all([
+                getDocs(query(collection(db, 'tasks'), where('groupId', '==', user.groupId))),
+                getDocs(query(collection(db, 'users'), where('groupId', '==', user.groupId))),
+              ]);
+
+              const fetchedTasks = tasksSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
+              const fetchedUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as User));
+
+              const assignableUsers = fetchedUsers.map((u) => ({
+                id: u.id,
+                type: u.type,
+                resource: u.resource,
+              }));
+
+              // 2. Run distribution
+              const { assignments: distResult } = autoDistributeTasks(fetchedTasks, assignableUsers, true);
+
+              // 3. Apply changes via a batch
+              const batch = writeBatch(db);
+              
+              // Load current week assignments to update pending ones
+              const weekStartStr = getMondayISO(new Date());
+              const assignmentsSnap = await getDocs(
+                query(
+                  collection(db, 'assignments'),
+                  where('groupId', '==', user.groupId),
+                  where('weekStart', '==', weekStartStr)
+                )
+              );
+              
+              const currentWeekAssignments = assignmentsSnap.docs.map(
+                (d) => ({ id: d.id, ...d.data() } as Assignment)
+              );
+
+              const todayDateISO = new Date().toISOString().split('T')[0];
+
+              const getDateForWeekday = (weekStart: string, idx: number) => {
+                const d = new Date(weekStart);
+                const offset = idx === 0 ? 6 : idx - 1;
+                d.setDate(d.getDate() + offset);
+                return d.toISOString().split('T')[0];
+              };
+
+              for (const item of distResult) {
+                const task = fetchedTasks.find((t) => t.id === item.taskId);
+                if (!task || !task.auto) continue; // Only mix auto-assigned tasks
+
+                // Update Task in Firestore
+                batch.update(doc(db, 'tasks', task.id), { assignedTo: item.assignedTo });
+
+                // Update/Create weekly pending assignments for today and future days
+                const activeDays = task.weekDays || [];
+                for (const dayIndex of activeDays) {
+                  const dateISO = getDateForWeekday(weekStartStr, dayIndex);
+                  
+                  // Only update/create today or in the future
+                  if (dateISO >= todayDateISO) {
+                    const existing = currentWeekAssignments.find(
+                      (a) => a.taskId === task.id && a.date === dateISO
+                    );
+
+                    if (existing) {
+                      if (existing.status === 'pending') {
+                        batch.update(doc(db, 'assignments', existing.id), {
+                          assignedTo: item.assignedTo,
+                        });
+                      }
+                    } else {
+                      // Create new pending assignment
+                      const newRef = doc(collection(db, 'assignments'));
+                      batch.set(newRef, {
+                        taskId: task.id,
+                        groupId: user.groupId,
+                        title: task.title,
+                        complexity: task.complexity,
+                        weekDays: task.weekDays,
+                        assignedTo: item.assignedTo,
+                        status: 'pending',
+                        weekStart: weekStartStr,
+                        date: dateISO,
+                        doneAt: null,
+                        skippedAt: null,
+                        createdAt: serverTimestamp(),
+                      });
+                    }
+                  }
+                }
+              }
+
+              await batch.commit();
+              await loadData();
+              if (Platform.OS === 'web') {
+                window.alert('Auto-assigned chores shuffled successfully!');
+              } else {
+                Alert.alert('Success', 'Auto-assigned chores shuffled successfully!');
+              }
+            } catch (e: any) {
+              if (Platform.OS === 'web') {
+                window.alert(e?.message ?? 'Could not shuffle chores');
+              } else {
+                Alert.alert('Error', e?.message ?? 'Could not shuffle chores');
+              }
+            } finally {
+              setMixing(false);
+            }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to re-shuffle all auto-assigned chores for this week?')) {
+        runShuffle();
+      }
+    } else {
+      Alert.alert(
+        'Shuffle Chores',
+        'Are you sure you want to re-shuffle all auto-assigned chores for this week?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Shuffle', onPress: runShuffle },
+        ]
+      );
+    }
+  };
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;
   }
@@ -200,11 +501,27 @@ export default function TasksScreen() {
           <Text style={styles.title}>Chore List</Text>
           <Text style={styles.subtitle}>{tasks.length} tasks · {tasks.filter((t) => t.isActive).length} active</Text>
         </View>
-        {isAdult && (
-          <TouchableOpacity style={styles.addBtn} onPress={openCreate}>
-            <Text style={styles.addBtnText}>+ Add Task</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.headerActions}>
+          {isAdult && (
+            <TouchableOpacity style={styles.addBtn} onPress={openCreate}>
+              <Text style={styles.addBtnText}>+ Add Task</Text>
+            </TouchableOpacity>
+          )}
+          {isAdult && (
+            <TouchableOpacity
+              style={styles.mixBtn}
+              onPress={handleMixTasks}
+              activeOpacity={0.8}
+              disabled={mixing}
+            >
+              {mixing ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="sync-outline" size={18} color="#fff" />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView
@@ -328,9 +645,21 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mixBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.sm,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   addBtn: {
     backgroundColor: Colors.primary, borderRadius: Radius.sm,
-    paddingHorizontal: 16, paddingVertical: 8,
+    paddingHorizontal: 16,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   addBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   list: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 100 },

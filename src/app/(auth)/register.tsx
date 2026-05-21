@@ -119,7 +119,7 @@ export default function RegisterScreen() {
           {/* Resource slider */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
-              My capacity: <Text style={styles.accent}>{resource}%</Text>
+              My capacity: <Text style={styles.accent}>{resource}</Text>
             </Text>
             <Text style={styles.hint}>
               How much of the household workload can you handle?
@@ -132,7 +132,7 @@ export default function RegisterScreen() {
                   onPress={() => setResource(v)}
                 >
                   <Text style={[styles.sliderBtnText, resource === v && styles.sliderBtnTextActive]}>
-                    {v}%
+                    {v}
                   </Text>
                 </TouchableOpacity>
               ))}

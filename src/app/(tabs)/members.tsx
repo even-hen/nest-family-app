@@ -145,7 +145,7 @@ export default function MembersScreen() {
                 </View>
                 <View style={styles.cardRight}>
                   <Text style={styles.resourceLabel}>Capacity</Text>
-                  <Text style={styles.resourceValue}>{m.resource}%</Text>
+                  <Text style={styles.resourceValue}>{m.resource}</Text>
                 </View>
               </View>
 
@@ -199,7 +199,7 @@ export default function MembersScreen() {
               </>
             )}
 
-            <Text style={styles.label}>Capacity: <Text style={{ color: Colors.primary }}>{form.resource}%</Text></Text>
+            <Text style={styles.label}>Capacity: <Text style={{ color: Colors.primary }}>{form.resource}</Text></Text>
             <View style={styles.sliderRow}>
               {[25, 50, 75, 100].map((v) => (
                 <TouchableOpacity
@@ -207,7 +207,7 @@ export default function MembersScreen() {
                   style={[styles.sliderBtn, form.resource === v && styles.sliderBtnActive]}
                   onPress={() => setForm((p) => ({ ...p, resource: v }))}
                 >
-                  <Text style={[styles.sliderText, form.resource === v && styles.sliderTextActive]}>{v}%</Text>
+                  <Text style={[styles.sliderText, form.resource === v && styles.sliderTextActive]}>{v}</Text>
                 </TouchableOpacity>
               ))}
             </View>
