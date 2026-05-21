@@ -4,7 +4,6 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  FirebaseError,
 } from 'firebase/auth';
 import {
   doc,

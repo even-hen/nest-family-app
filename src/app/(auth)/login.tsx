@@ -5,9 +5,12 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { Colors, Spacing, Radius } from '../../constants/colors';
+import { Spacing, Radius, ThemeColors } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ThemeContext';
 
 export default function LoginScreen() {
+  const { Colors } = useAppTheme();
+  const styles = getStyles(Colors);
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -109,7 +112,7 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: Spacing.lg },
   header: { alignItems: 'center', marginBottom: Spacing.xl },

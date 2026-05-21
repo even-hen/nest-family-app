@@ -6,19 +6,23 @@ import {
 import {
   collection, query, where, getDocs, doc, updateDoc, writeBatch,
 } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Colors, Spacing, Radius } from '../../constants/colors';
+import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { Notification } from '../../types';
+import { useAppTheme } from '../../contexts/ThemeContext';
 
 const TYPE_ICONS: Record<string, string> = {
-  daily_summary: '📋',
-  missed_task: '⚠️',
-  unassigned_tasks: '📌',
-  weekly_report: '📊',
+  daily_summary: 'clipboard-outline',
+  missed_task: 'alert-circle-outline',
+  unassigned_tasks: 'help-circle-outline',
+  weekly_report: 'bar-chart-outline',
 };
 
 export default function NotificationsScreen() {
+  const { Colors } = useAppTheme();
+  const styles = getStyles(Colors);
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +86,7 @@ export default function NotificationsScreen() {
       >
         {notifications.length === 0 && (
           <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>🔔</Text>
+            <Ionicons name="notifications-outline" size={60} color={Colors.textMuted} style={{ marginBottom: Spacing.md }} />
             <Text style={styles.emptyTitle}>All quiet</Text>
             <Text style={styles.emptyDesc}>No notifications yet</Text>
           </View>
@@ -96,7 +100,11 @@ export default function NotificationsScreen() {
             activeOpacity={0.8}
           >
             <View style={styles.cardIcon}>
-              <Text style={styles.cardIconEmoji}>{TYPE_ICONS[n.type] ?? '🔔'}</Text>
+              <Ionicons
+                name={(TYPE_ICONS[n.type] ?? 'notifications-outline') as any}
+                size={22}
+                color={Colors.primary}
+              />
             </View>
             <View style={styles.cardBody}>
               <View style={styles.cardTitleRow}>
@@ -124,7 +132,7 @@ function formatRelativeTime(date: Date): string {
   return 'Just now';
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   header: {
@@ -132,7 +140,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg, paddingTop: 60, paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  title: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary },
+  title: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.primary, fontWeight: '600', marginTop: 2 },
   markAllBtn: {
     backgroundColor: Colors.bgInput, borderRadius: Radius.full,

@@ -10,9 +10,12 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Colors, Spacing, Radius } from '../../constants/colors';
+import { Spacing, Radius, ThemeColors } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ThemeContext';
 
 export default function SetupGroupScreen() {
+  const { Colors } = useAppTheme();
+  const styles = getStyles(Colors);
   const { user, refreshUser } = useAuth();
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose');
   const [groupName, setGroupName] = useState('');
@@ -220,7 +223,7 @@ export default function SetupGroupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   content: { flexGrow: 1, justifyContent: 'center', padding: Spacing.lg },
   header: { alignItems: 'center', marginBottom: Spacing.xl },

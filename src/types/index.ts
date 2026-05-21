@@ -1,7 +1,5 @@
 export type UserType = 'Adult' | 'Teen' | 'Child';
 
-export type TaskType = 'daily' | 'weekly';
-
 export type AssignmentStatus = 'pending' | 'done' | 'skipped';
 
 export interface User {
@@ -14,6 +12,7 @@ export interface User {
   timezone: string;
   notificationTime: string; // e.g. "09:00"
   language: 'en' | 'ru';
+  theme?: 'light' | 'dark';
   createdAt: Date;
 }
 
@@ -38,8 +37,7 @@ export interface Task {
   groupId: string;
   title: string;
   complexity: number; // 1-100
-  type: TaskType;
-  weekDays: number[]; // 0=Sun..6=Sat, only for weekly tasks
+  weekDays: number[]; // 0=Sun..6=Sat (active weekdays for scheduling)
   availableFor: UserType[]; // which user types can be assigned
   assignedTo: string | null; // userId or null (unassigned)
   isActive: boolean;
@@ -53,12 +51,11 @@ export interface Assignment {
   groupId: string;
   title: string;
   complexity: number;
-  type: TaskType;
   weekDays: number[];
   assignedTo: string; // userId
   status: AssignmentStatus;
   weekStart: string; // ISO date of week's Monday (for weekly grouping)
-  date: string; // ISO date (for daily: the specific day; for weekly: the week's Monday)
+  date: string; // ISO date of the specific day
   doneAt: Date | null;
   skippedAt: Date | null;
 }

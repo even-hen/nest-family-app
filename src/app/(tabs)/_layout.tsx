@@ -1,18 +1,40 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ThemeContext';
+import { ThemeColors } from '../../constants/colors';
+import { Ionicons } from '@expo/vector-icons';
 
-function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focused: boolean }) {
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+function TabIcon({
+  iconName,
+  focused,
+  label,
+}: {
+  iconName: IconName;
+  focused: boolean;
+  label: string;
+}) {
+  const { Colors } = useAppTheme();
+  const styles = getStyles(Colors);
+
   return (
     <View style={styles.tabItem}>
-      <Text style={styles.tabEmoji}>{emoji}</Text>
+      <Ionicons
+        name={iconName}
+        size={22}
+        color={focused ? Colors.tabActive : Colors.tabInactive}
+      />
       <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
     </View>
   );
 }
 
 export default function TabsLayout() {
+  const { Colors } = useAppTheme();
+  const styles = getStyles(Colors);
+
   return (
     <Tabs
       screenOptions={{
@@ -24,44 +46,80 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="assignments"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="✅" label="Tasks" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              iconName={focused ? 'checkbox' : 'checkbox-outline'}
+              label="Tasks"
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="tasks"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📋" label="Chores" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              iconName={focused ? 'clipboard' : 'clipboard-outline'}
+              label="Chores"
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="members"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👨‍👩‍👧" label="Family" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              iconName={focused ? 'people' : 'people-outline'}
+              label="Family"
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="stats"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📊" label="Stats" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              iconName={focused ? 'bar-chart' : 'bar-chart-outline'}
+              label="Stats"
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="notifications"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🔔" label="Alerts" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              iconName={focused ? 'notifications' : 'notifications-outline'}
+              label="Alerts"
+              focused={focused}
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" label="Settings" focused={focused} />,
+          tabBarIcon: ({ focused }) => (
+            <TabIcon
+              iconName={focused ? 'settings' : 'settings-outline'}
+              label="Settings"
+              focused={focused}
+            />
+          ),
         }}
       />
     </Tabs>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   tabBar: {
     backgroundColor: Colors.bgCard,
     borderTopColor: Colors.border,
@@ -70,8 +128,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     paddingTop: 4,
   },
-  tabItem: { alignItems: 'center', justifyContent: 'center', gap: 2 },
-  tabEmoji: { fontSize: 20 },
+  tabItem: { alignItems: 'center', justifyContent: 'center', gap: 4 },
   tabLabel: { fontSize: 10, color: Colors.tabInactive, fontWeight: '500' },
   tabLabelActive: { color: Colors.tabActive },
 });

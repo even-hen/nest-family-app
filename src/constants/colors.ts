@@ -1,4 +1,4 @@
-export const Colors = {
+export const darkColors = {
   // Primary brand - deep indigo/violet
   primary: '#7C5CFC',
   primaryLight: '#9B85FD',
@@ -37,9 +37,9 @@ export const Colors = {
   skipped: '#FF6B6B',
 
   // User type badge colors
-  adult: '#7C5CFC',
-  teen: '#4ECDC4',
-  child: '#FF9A9A',
+  adult: '#6366F1', // Sleek Indigo
+  teen: '#0D9488',  // Refined Teal
+  child: '#F43F5E', // Premium Rose
 
   // Gradient stops (for LinearGradient)
   gradientStart: '#7C5CFC',
@@ -72,3 +72,22 @@ export const Radius = {
   xl: 24,
   full: 9999,
 };
+
+export const lightColors = {
+  ...darkColors,
+  bg: '#F5F5F7',
+  bgCard: '#FFFFFF',
+  bgCardAlt: '#F0F0F3',
+  bgInput: '#EAEAEF',
+  border: '#D1D1D6',
+  borderLight: '#C7C7CC',
+  textPrimary: '#1C1C1E',
+  textSecondary: '#3A3A3C',
+  textMuted: '#8E8E93',
+  tabActive: '#7C5CFC',
+  tabInactive: '#8E8E93',
+};
+
+export type ThemeColors = typeof darkColors;
+export const Colors = darkColors; // Fallback
+

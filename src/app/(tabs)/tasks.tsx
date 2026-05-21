@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Modal, TextInput, Alert, ActivityIndicator, Switch, RefreshControl,
@@ -9,71 +9,57 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Colors, Spacing, Radius } from '../../constants/colors';
+import { Ionicons } from '@expo/vector-icons';
+import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { Task, UserType } from '../../types';
-
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const USER_TYPES: UserType[] = ['Adult', 'Teen', 'Child'];
-const TYPE_COLORS: Record<UserType, string> = {
-  Adult: Colors.adult,
-  Teen: Colors.teen,
-  Child: Colors.child,
-};
+import { useAppTheme } from '../../contexts/ThemeContext';
+import { getTypeColor } from '../../utils/colors';
+import { USER_TYPES, DAYS_OF_WEEK, ALL_WEEK_DAYS, FIRESTORE_COLLECTIONS } from '../../constants/domain';
 
 function TaskCard({
-  task, users, onEdit, onDelete, canEdit,
+  task, users, onEdit, canEdit,
 }: {
   task: Task; users: Record<string, string>;
-  onEdit: (t: Task) => void; onDelete: (id: string) => void; canEdit: boolean;
+  onEdit: (t: Task) => void; canEdit: boolean;
 }) {
+  const { Colors } = useAppTheme();
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
   return (
     <View style={[styles.card, !task.isActive && styles.cardInactive]}>
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleRow}>
           <View style={[styles.activeIndicator, { backgroundColor: task.isActive ? Colors.success : Colors.textMuted }]} />
           <Text style={[styles.cardTitle, !task.isActive && styles.textMuted]}>{task.title}</Text>
+          <Text style={styles.cardPoints}>{task.complexity} pts</Text>
         </View>
         {canEdit && (
           <View style={styles.cardActions}>
-            <TouchableOpacity onPress={() => onEdit(task)} style={styles.actionBtn}>
-              <Text style={styles.actionEdit}>✏️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => onDelete(task.id)} style={styles.actionBtn}>
-              <Text style={styles.actionDelete}>🗑️</Text>
+            <TouchableOpacity onPress={() => onEdit(task)} style={styles.actionIconBtn} activeOpacity={0.7}>
+              <Ionicons name="create-outline" size={16} color={Colors.primary} />
             </TouchableOpacity>
           </View>
         )}
       </View>
-      <View style={styles.cardMeta}>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>⚡ {task.complexity}pts</Text>
-        </View>
-        <View style={[styles.badge, { backgroundColor: Colors.primary + '20' }]}>
-          <Text style={[styles.badgeText, { color: Colors.primary }]}>
-            {task.type === 'daily' ? '📅 Daily' : '📆 Weekly'}
-          </Text>
-        </View>
-        {task.assignedTo && (
-          <View style={[styles.badge, { backgroundColor: Colors.success + '20' }]}>
-            <Text style={[styles.badgeText, { color: Colors.success }]}>
-              👤 {users[task.assignedTo] ?? 'Unknown'}
-            </Text>
-          </View>
-        )}
-      </View>
-      {task.type === 'weekly' && task.weekDays.length > 0 && (
+      {task.weekDays && task.weekDays.length > 0 && (
         <View style={styles.daysRow}>
-          {DAYS.map((d, i) => (
-            <View key={i} style={[styles.dayChip, task.weekDays.includes(i) && styles.dayChipActive]}>
-              <Text style={[styles.dayText, task.weekDays.includes(i) && styles.dayTextActive]}>{d}</Text>
+          {DAYS_OF_WEEK.map((d) => (
+            <View key={d.value} style={[styles.dayChip, task.weekDays.includes(d.value) && styles.dayChipActive]}>
+              <Text style={[styles.dayText, task.weekDays.includes(d.value) && styles.dayTextActive]}>{d.label}</Text>
             </View>
           ))}
         </View>
       )}
       <View style={styles.availRow}>
+        {task.assignedTo && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>
+              Assigned: {users[task.assignedTo] ?? '—'}
+            </Text>
+          </View>
+        )}
         {task.availableFor.map((t) => (
-          <View key={t} style={[styles.typePill, { backgroundColor: TYPE_COLORS[t] + '20' }]}>
-            <Text style={[styles.typePillText, { color: TYPE_COLORS[t] }]}>{t}</Text>
+          <View key={t} style={[styles.typePill, { backgroundColor: getTypeColor(t, Colors) + '15', borderColor: getTypeColor(t, Colors) + '30', borderWidth: 1 }]}>
+            <Text style={[styles.typePillText, { color: getTypeColor(t, Colors) }]}>{t}</Text>
           </View>
         ))}
       </View>
@@ -82,12 +68,14 @@ function TaskCard({
 }
 
 const EMPTY_FORM = {
-  title: '', complexity: '10', type: 'daily' as 'daily' | 'weekly',
-  weekDays: [] as number[], availableFor: ['Adult', 'Teen', 'Child'] as UserType[],
+  title: '', complexity: '10',
+  weekDays: [...ALL_WEEK_DAYS] as number[], availableFor: [...USER_TYPES] as UserType[],
   assignedTo: null as string | null, isActive: true,
 };
 
 export default function TasksScreen() {
+  const { Colors } = useAppTheme();
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [groupUsers, setGroupUsers] = useState<Record<string, string>>({});
@@ -107,7 +95,14 @@ export default function TasksScreen() {
       getDocs(query(collection(db, 'tasks'), where('groupId', '==', user.groupId))),
       getDocs(query(collection(db, 'users'), where('groupId', '==', user.groupId))),
     ]);
-    setTasks(tasksSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Task)));
+    const loadedTasks = tasksSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
+    loadedTasks.sort((a, b) => {
+      if (a.isActive === b.isActive) {
+        return a.title.localeCompare(b.title);
+      }
+      return a.isActive ? -1 : 1;
+    });
+    setTasks(loadedTasks);
     const nameMap: Record<string, string> = {};
     const list: { id: string; name: string }[] = [];
     usersSnap.docs.forEach((d) => { nameMap[d.id] = d.data().name; list.push({ id: d.id, name: d.data().name }); });
@@ -123,8 +118,8 @@ export default function TasksScreen() {
   const openEdit = (t: Task) => {
     setEditingTask(t);
     setForm({
-      title: t.title, complexity: String(t.complexity), type: t.type,
-      weekDays: t.weekDays, availableFor: t.availableFor,
+      title: t.title, complexity: String(t.complexity),
+      weekDays: t.weekDays || [], availableFor: t.availableFor,
       assignedTo: t.assignedTo, isActive: t.isActive,
     });
     setModalVisible(true);
@@ -138,9 +133,10 @@ export default function TasksScreen() {
     setSaving(true);
     try {
       const data = {
-        title: form.title.trim(), complexity: c, type: form.type,
-        weekDays: form.type === 'weekly' ? form.weekDays : [],
-        availableFor: form.availableFor, assignedTo: form.assignedTo,
+        title: form.title.trim(), complexity: c,
+        weekDays: form.weekDays.length === 0 ? [...ALL_WEEK_DAYS] : form.weekDays,
+        availableFor: form.availableFor.length === 0 ? [...USER_TYPES] : form.availableFor,
+        assignedTo: form.assignedTo,
         isActive: form.isActive,
       };
       if (editingTask) {
@@ -165,8 +161,13 @@ export default function TasksScreen() {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          await deleteDoc(doc(db, 'tasks', id));
-          setTasks((prev) => prev.filter((t) => t.id !== id));
+          try {
+            await deleteDoc(doc(db, 'tasks', id));
+            setTasks((prev) => prev.filter((t) => t.id !== id));
+            setModalVisible(false);
+          } catch (e: any) {
+            Alert.alert('Error', e?.message ?? 'Could not delete task');
+          }
         },
       },
     ]);
@@ -201,7 +202,7 @@ export default function TasksScreen() {
         </View>
         {isAdult && (
           <TouchableOpacity style={styles.addBtn} onPress={openCreate}>
-            <Text style={styles.addBtnText}>+ Add</Text>
+            <Text style={styles.addBtnText}>+ Add Task</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -212,13 +213,12 @@ export default function TasksScreen() {
       >
         {tasks.length === 0 && (
           <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>📋</Text>
             <Text style={styles.emptyTitle}>No tasks yet</Text>
-            {isAdult && <Text style={styles.emptyDesc}>Tap "+ Add" to create your first chore</Text>}
+            {isAdult && <Text style={styles.emptyDesc}>Tap "+ Add Task" to create your first chore</Text>}
           </View>
         )}
         {tasks.map((t) => (
-          <TaskCard key={t.id} task={t} users={groupUsers} onEdit={openEdit} onDelete={handleDelete} canEdit={isAdult} />
+          <TaskCard key={t.id} task={t} users={groupUsers} onEdit={openEdit} canEdit={isAdult} />
         ))}
       </ScrollView>
 
@@ -244,44 +244,26 @@ export default function TasksScreen() {
               keyboardType="number-pad" placeholder="10" placeholderTextColor={Colors.textMuted}
             />
 
-            <Text style={styles.label}>Type</Text>
-            <View style={styles.segRow}>
-              {(['daily', 'weekly'] as const).map((t) => (
+            <Text style={styles.label}>Active Days</Text>
+            <View style={styles.daysRow}>
+              {DAYS_OF_WEEK.map((d) => (
                 <TouchableOpacity
-                  key={t} style={[styles.segBtn, form.type === t && styles.segBtnActive]}
-                  onPress={() => setForm((p) => ({ ...p, type: t }))}
+                  key={d.value} style={[styles.dayChip, form.weekDays.includes(d.value) && styles.dayChipActive]}
+                  onPress={() => toggleDay(d.value)}
                 >
-                  <Text style={[styles.segText, form.type === t && styles.segTextActive]}>
-                    {t === 'daily' ? '📅 Daily' : '📆 Weekly'}
-                  </Text>
+                  <Text style={[styles.dayText, form.weekDays.includes(d.value) && styles.dayTextActive]}>{d.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-
-            {form.type === 'weekly' && (
-              <>
-                <Text style={styles.label}>Active Days</Text>
-                <View style={styles.daysRow}>
-                  {DAYS.map((d, i) => (
-                    <TouchableOpacity
-                      key={i} style={[styles.dayChip, form.weekDays.includes(i) && styles.dayChipActive]}
-                      onPress={() => toggleDay(i)}
-                    >
-                      <Text style={[styles.dayText, form.weekDays.includes(i) && styles.dayTextActive]}>{d}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            )}
 
             <Text style={styles.label}>Available For</Text>
             <View style={styles.typeRow}>
               {USER_TYPES.map((t) => (
                 <TouchableOpacity
-                  key={t} style={[styles.typePillBtn, form.availableFor.includes(t) && { backgroundColor: TYPE_COLORS[t] + '30', borderColor: TYPE_COLORS[t] }]}
+                  key={t} style={[styles.typePillBtn, form.availableFor.includes(t) && { backgroundColor: getTypeColor(t, Colors) + '15', borderColor: getTypeColor(t, Colors) }]}
                   onPress={() => toggleType(t)}
                 >
-                  <Text style={[styles.typePillBtnText, form.availableFor.includes(t) && { color: TYPE_COLORS[t] }]}>{t}</Text>
+                  <Text style={[styles.typePillBtnText, form.availableFor.includes(t) && { color: getTypeColor(t, Colors) }]}>{t}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -317,6 +299,18 @@ export default function TasksScreen() {
             <TouchableOpacity style={[styles.saveBtn, saving && styles.btnDisabled]} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Task</Text>}
             </TouchableOpacity>
+
+            {editingTask && (
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                onPress={() => handleDelete(editingTask.id)}
+                disabled={saving}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="trash-outline" size={16} color={Colors.accent} />
+                <Text style={styles.deleteBtnText}>Delete Task</Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </View>
       </Modal>
@@ -324,7 +318,7 @@ export default function TasksScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   header: {
@@ -332,47 +326,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg, paddingTop: 60, paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  title: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary },
+  title: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
   addBtn: {
-    backgroundColor: Colors.primary, borderRadius: Radius.full,
+    backgroundColor: Colors.primary, borderRadius: Radius.sm,
     paddingHorizontal: 16, paddingVertical: 8,
   },
-  addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  addBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
   list: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 100 },
   card: {
-    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md,
+    backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md,
     borderWidth: 1, borderColor: Colors.border,
   },
   cardInactive: { opacity: 0.5 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   activeIndicator: { width: 8, height: 8, borderRadius: 4 },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary, flex: 1 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary, flexShrink: 1 },
+  cardPoints: { fontSize: 13, fontWeight: '600', color: 'rgb(255, 179, 71)', marginLeft: 8 },
   textMuted: { color: Colors.textMuted },
-  cardActions: { flexDirection: 'row', gap: 4 },
-  actionBtn: { padding: 4 },
-  actionEdit: { fontSize: 16 },
-  actionDelete: { fontSize: 16 },
+  cardActions: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  actionIconBtn: {
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
   badge: {
     backgroundColor: Colors.bgInput, borderRadius: Radius.sm,
-    paddingHorizontal: 8, paddingVertical: 3,
+    paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: Colors.border,
   },
-  badgeText: { fontSize: 11, color: Colors.textSecondary, fontWeight: '600' },
+  badgeText: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },
   daysRow: { flexDirection: 'row', gap: 4, marginBottom: 8, flexWrap: 'wrap' },
   dayChip: {
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.sm,
-    backgroundColor: Colors.bgInput, borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 6, paddingVertical: 4,
+    backgroundColor: 'transparent', borderWidth: 0,
   },
-  dayChipActive: { backgroundColor: Colors.primary + '30', borderColor: Colors.primary },
-  dayText: { fontSize: 11, color: Colors.textMuted, fontWeight: '600' },
-  dayTextActive: { color: Colors.primary },
+  dayChipActive: { backgroundColor: 'transparent', borderWidth: 0 },
+  dayText: { fontSize: 13, color: Colors.textMuted, fontWeight: '500' },
+  dayTextActive: { color: Colors.primary, fontWeight: '700' },
   availRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  typePill: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3 },
+  typePill: { borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: 3 },
   typePillText: { fontSize: 11, fontWeight: '600' },
-  empty: { alignItems: 'center', paddingVertical: 60 },
-  emptyEmoji: { fontSize: 60, marginBottom: Spacing.md },
+  empty: { alignItems: 'center', paddingVertical: 80 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   emptyDesc: { fontSize: 14, color: Colors.textSecondary, marginTop: 4 },
   modal: { flex: 1, backgroundColor: Colors.bg },
@@ -381,41 +378,46 @@ const styles = StyleSheet.create({
     padding: Spacing.lg, paddingTop: 60, borderBottomWidth: 1, borderBottomColor: Colors.border,
     backgroundColor: Colors.bgCard,
   },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   modalClose: { fontSize: 18, color: Colors.textSecondary, padding: 4 },
   modalBody: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 60 },
-  label: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600', marginBottom: 4, marginTop: 8 },
+  label: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600', marginBottom: 4, marginTop: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: {
-    backgroundColor: Colors.bgInput, borderRadius: Radius.md, padding: Spacing.md,
+    backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md,
     color: Colors.textPrimary, fontSize: 15, borderWidth: 1, borderColor: Colors.border,
   },
   segRow: { flexDirection: 'row', gap: Spacing.sm },
   segBtn: {
-    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.md, padding: Spacing.md,
+    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md,
     alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
   },
-  segBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '20' },
-  segText: { color: Colors.textSecondary, fontWeight: '600' },
-  segTextActive: { color: Colors.primary },
+  segBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '15' },
+  segText: { color: Colors.textSecondary, fontWeight: '500' },
+  segTextActive: { color: Colors.primary, fontWeight: '600' },
   typeRow: { flexDirection: 'row', gap: Spacing.sm },
   typePillBtn: {
-    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.md, padding: Spacing.md,
+    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md,
     alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
   },
-  typePillBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  typePillBtnText: { color: Colors.textSecondary, fontWeight: '500', fontSize: 13 },
   assigneeList: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   assigneeItem: {
-    backgroundColor: Colors.bgInput, borderRadius: Radius.full, paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: Colors.bgInput, borderRadius: Radius.sm, paddingHorizontal: 14, paddingVertical: 8,
     borderWidth: 1, borderColor: Colors.border,
   },
-  assigneeItemActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '20' },
-  assigneeText: { color: Colors.textSecondary, fontWeight: '600' },
-  assigneeTextActive: { color: Colors.primary },
+  assigneeItemActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '15' },
+  assigneeText: { color: Colors.textSecondary, fontWeight: '500' },
+  assigneeTextActive: { color: Colors.primary, fontWeight: '600' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
   saveBtn: {
-    backgroundColor: Colors.primary, borderRadius: Radius.md, padding: Spacing.md, alignItems: 'center', marginTop: 16,
-    shadowColor: Colors.primary, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
+    backgroundColor: Colors.primary, borderRadius: Radius.sm, padding: Spacing.md, alignItems: 'center', marginTop: 16,
   },
   btnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  deleteBtn: {
+    flexDirection: 'row', gap: 8, backgroundColor: Colors.accent + '15',
+    borderWidth: 1, borderColor: Colors.accent + '30', borderRadius: Radius.sm,
+    padding: Spacing.md, alignItems: 'center', justifyContent: 'center', marginTop: 12,
+  },
+  deleteBtnText: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
 });

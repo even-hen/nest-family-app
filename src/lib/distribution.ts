@@ -1,15 +1,15 @@
 import { Task, User, UserType } from '../types';
 
 /**
- * Calculates the "resource cost" of a task for the week.
- * Weekly tasks with complexity C cost C.
- * Daily tasks with complexity C cost C * 7 (runs every day).
+ * Calculates the weekly resource cost of a task.
+ * Cost = complexity * number of active weekDays.
+ * E.g. complexity=10, active on 3 days → cost=30 points/week.
  */
-export function getTaskWeeklyCost(task: Pick<Task, 'type' | 'complexity'>): number {
-  return task.type === 'daily' ? task.complexity * 7 : task.complexity;
+export function getTaskWeeklyCost(task: Pick<Task, 'weekDays' | 'complexity'>): number {
+  return task.complexity * (task.weekDays ? task.weekDays.length : 0);
 }
 
-interface AssignableUser {
+export interface AssignableUser {
   id: string;
   type: UserType;
   resource: number; // 0-100
@@ -89,19 +89,23 @@ export function autoDistributeTasks(
 
 /**
  * Calculate how much resource (%) each user is actually using
- * based on their assigned tasks relative to their maximum capacity.
+ * based on their assigned tasks relative to their proportional share of total work.
  */
 export function calculateResourceUsage(
   tasks: Task[],
   userId: string,
-  userResource: number
+  userResource: number,
+  allUsers: AssignableUser[]
 ): number {
-  const assignedCost = tasks
-    .filter((t) => t.assignedTo === userId && t.isActive)
+  const activeTasks = tasks.filter((t) => t.isActive);
+  const assignedCost = activeTasks
+    .filter((t) => t.assignedTo === userId)
     .reduce((sum, t) => sum + getTaskWeeklyCost(t), 0);
 
-  // Max possible weekly cost for this user: resource% of 100*7 (arbitrary scale)
-  // We express usage as a % of their resource allocation
-  if (userResource === 0) return 0;
-  return Math.min(100, Math.round((assignedCost / (userResource * 7)) * 100));
+  const totalCost = activeTasks.reduce((sum, t) => sum + getTaskWeeklyCost(t), 0);
+  const totalResource = allUsers.reduce((s, u) => s + u.resource, 0);
+  const userShare = totalResource > 0 ? (userResource / totalResource) * totalCost : 0;
+
+  if (userShare === 0) return 0;
+  return Math.min(100, Math.round((assignedCost / userShare) * 100));
 }

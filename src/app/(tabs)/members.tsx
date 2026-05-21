@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Modal, TextInput, Alert, ActivityIndicator, Switch, RefreshControl,
@@ -8,25 +8,18 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Colors, Spacing, Radius } from '../../constants/colors';
+import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { User, UserType } from '../../types';
-
-const TYPE_COLORS: Record<UserType, string> = {
-  Adult: Colors.adult,
-  Teen: Colors.teen,
-  Child: Colors.child,
-};
-
-const TYPE_EMOJIS: Record<UserType, string> = {
-  Adult: '👤',
-  Teen: '🧑',
-  Child: '🧒',
-};
+import { useAppTheme } from '../../contexts/ThemeContext';
+import { getTypeColor } from '../../utils/colors';
+import { USER_TYPES, FIRESTORE_COLLECTIONS } from '../../constants/domain';
 
 export default function MembersScreen() {
+  const { Colors } = useAppTheme();
+  const styles = useMemo(() => getStyles(Colors), [Colors]);
   const { user: currentUser, refreshUser } = useAuth();
   const [members, setMembers] = useState<User[]>([]);
-  const [tasks, setTasks] = useState<{ assignedTo: string; complexity: number; type: string }[]>([]);
+  const [tasks, setTasks] = useState<{ assignedTo: string; complexity: number; weekDays: number[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -45,7 +38,7 @@ export default function MembersScreen() {
     setTasks(tasksSnap.docs.map((d) => ({
       assignedTo: d.data().assignedTo,
       complexity: d.data().complexity,
-      type: d.data().type,
+      weekDays: d.data().weekDays || [],
     })));
   }, [currentUser?.groupId]);
 
@@ -56,8 +49,11 @@ export default function MembersScreen() {
   const getResourceUsed = (userId: string) => {
     return tasks
       .filter((t) => t.assignedTo === userId)
-      .reduce((sum, t) => sum + (t.type === 'daily' ? t.complexity * 7 : t.complexity), 0);
+      .reduce((sum, t) => sum + t.complexity * (t.weekDays ? t.weekDays.length : 0), 0);
   };
+
+  const totalWeeklyCost = tasks.reduce((sum, t) => sum + t.complexity * (t.weekDays ? t.weekDays.length : 0), 0);
+  const totalResource = members.reduce((sum, m) => sum + m.resource, 0);
 
   const openEdit = (u: User) => {
     setEditingUser(u);
@@ -90,8 +86,12 @@ export default function MembersScreen() {
       {
         text: 'Remove', style: 'destructive',
         onPress: async () => {
-          await updateDoc(doc(db, 'users', userId), { groupId: null });
-          setMembers((prev) => prev.filter((m) => m.id !== userId));
+          try {
+            await updateDoc(doc(db, FIRESTORE_COLLECTIONS.USERS, userId), { groupId: null });
+            setMembers((prev) => prev.filter((m) => m.id !== userId));
+          } catch (e: any) {
+            Alert.alert('Error', e?.message ?? 'Could not remove member');
+          }
         },
       },
     ]);
@@ -114,9 +114,10 @@ export default function MembersScreen() {
       >
         {members.map((m) => {
           const usedCost = getResourceUsed(m.id);
-          const maxCost = m.resource * 7;
-          const usedPct = maxCost > 0 ? Math.min(100, Math.round((usedCost / maxCost) * 100)) : 0;
+          const userShare = totalResource > 0 ? (m.resource / totalResource) * totalWeeklyCost : 0;
+          const usedPct = userShare > 0 ? Math.min(100, Math.round((usedCost / userShare) * 100)) : 0;
           const canEdit = isAdult || m.id === currentUser?.id;
+          const initial = m.name?.[0]?.toUpperCase() ?? '?';
 
           return (
             <TouchableOpacity
@@ -126,16 +127,20 @@ export default function MembersScreen() {
               activeOpacity={canEdit ? 0.75 : 1}
             >
               <View style={styles.cardTop}>
-                <View style={[styles.avatar, { backgroundColor: TYPE_COLORS[m.type] + '30' }]}>
-                  <Text style={styles.avatarEmoji}>{TYPE_EMOJIS[m.type]}</Text>
+                <View style={[styles.avatar, { backgroundColor: getTypeColor(m.type, Colors) + '15', borderWidth: 1, borderColor: getTypeColor(m.type, Colors) + '30' }]}>
+                  <Text style={[styles.avatarText, { color: getTypeColor(m.type, Colors) }]}>{initial}</Text>
                 </View>
                 <View style={styles.cardInfo}>
                   <View style={styles.nameRow}>
                     <Text style={styles.memberName}>{m.name}</Text>
-                    {m.id === currentUser?.id && <Text style={styles.youBadge}>You</Text>}
-                  </View>
-                  <View style={[styles.typePill, { backgroundColor: TYPE_COLORS[m.type] + '20' }]}>
-                    <Text style={[styles.typePillText, { color: TYPE_COLORS[m.type] }]}>{m.type}</Text>
+                    <View style={[styles.typePill, { backgroundColor: getTypeColor(m.type, Colors) + '15', borderWidth: 1, borderColor: getTypeColor(m.type, Colors) + '30' }]}>
+                      <Text style={[styles.typePillText, { color: getTypeColor(m.type, Colors) }]}>{m.type}</Text>
+                    </View>
+                    {m.id === currentUser?.id && (
+                      <View style={styles.youBadge}>
+                        <Text style={styles.youBadgeText}>You</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
                 <View style={styles.cardRight}>
@@ -181,13 +186,13 @@ export default function MembersScreen() {
               <>
                 <Text style={styles.label}>Role</Text>
                 <View style={styles.typeRow}>
-                  {(['Adult', 'Teen', 'Child'] as UserType[]).map((t) => (
+                  {USER_TYPES.map((t) => (
                     <TouchableOpacity
                       key={t}
-                      style={[styles.typeBtn, form.type === t && { borderColor: TYPE_COLORS[t], backgroundColor: TYPE_COLORS[t] + '20' }]}
+                      style={[styles.typeBtn, form.type === t && { borderColor: getTypeColor(t, Colors), backgroundColor: getTypeColor(t, Colors) + '15' }]}
                       onPress={() => setForm((p) => ({ ...p, type: t }))}
                     >
-                      <Text style={styles.typeBtnText}>{TYPE_EMOJIS[t]} {t}</Text>
+                      <Text style={[styles.typeBtnText, form.type === t && { color: getTypeColor(t, Colors) }]}>{t}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -223,35 +228,43 @@ export default function MembersScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   header: {
     paddingHorizontal: Spacing.lg, paddingTop: 60, paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  title: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary },
+  title: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
   list: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 100 },
   card: {
-    backgroundColor: Colors.bgCard, borderRadius: Radius.lg, padding: Spacing.md,
+    backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md,
     borderWidth: 1, borderColor: Colors.border,
   },
   cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md },
-  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
-  avatarEmoji: { fontSize: 22 },
+  avatar: { width: 44, height: 44, borderRadius: Radius.sm, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
+  avatarText: { fontSize: 18, fontWeight: '700' },
   cardInfo: { flex: 1 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  memberName: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  memberName: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary },
   youBadge: {
-    fontSize: 11, color: Colors.primary, fontWeight: '700',
-    backgroundColor: Colors.primary + '20', borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 2,
+    height: 20, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: Colors.primary + '15', borderRadius: 4,
+    paddingHorizontal: 8, borderWidth: 1, borderColor: Colors.primary + '30',
   },
-  typePill: { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 3, alignSelf: 'flex-start' },
-  typePillText: { fontSize: 11, fontWeight: '600' },
+  youBadgeText: {
+    fontSize: 10, color: Colors.primary, fontWeight: '700',
+  },
+  typePill: {
+    height: 20, justifyContent: 'center', alignItems: 'center',
+    borderRadius: 4, paddingHorizontal: 8,
+    borderWidth: 1,
+  },
+  typePillText: { fontSize: 10, fontWeight: '600' },
   cardRight: { alignItems: 'flex-end' },
   resourceLabel: { fontSize: 11, color: Colors.textMuted },
-  resourceValue: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary },
+  resourceValue: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   barContainer: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   barBg: { flex: 1, height: 6, backgroundColor: Colors.bgInput, borderRadius: Radius.full, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: Radius.full },
@@ -262,37 +275,36 @@ const styles = StyleSheet.create({
     padding: Spacing.lg, paddingTop: 60, borderBottomWidth: 1, borderBottomColor: Colors.border,
     backgroundColor: Colors.bgCard,
   },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   modalClose: { fontSize: 18, color: Colors.textSecondary },
   modalBody: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 60 },
-  label: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600', marginTop: 8 },
+  label: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600', marginTop: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: {
-    backgroundColor: Colors.bgInput, borderRadius: Radius.md, padding: Spacing.md,
+    backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md,
     color: Colors.textPrimary, fontSize: 15, borderWidth: 1, borderColor: Colors.border,
   },
   typeRow: { flexDirection: 'row', gap: Spacing.sm },
   typeBtn: {
-    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.md, padding: Spacing.md,
+    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md,
     alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
   },
   typeBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
   sliderRow: { flexDirection: 'row', gap: Spacing.sm },
   sliderBtn: {
-    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.md, padding: Spacing.md,
+    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md,
     alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
   },
-  sliderBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '20' },
+  sliderBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '15' },
   sliderText: { color: Colors.textSecondary, fontWeight: '600' },
-  sliderTextActive: { color: Colors.primary },
+  sliderTextActive: { color: Colors.primary, fontWeight: '600' },
   saveBtn: {
-    backgroundColor: Colors.primary, borderRadius: Radius.md, padding: Spacing.md, alignItems: 'center', marginTop: 16,
-    shadowColor: Colors.primary, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
+    backgroundColor: Colors.primary, borderRadius: Radius.sm, padding: Spacing.md, alignItems: 'center', marginTop: 16,
   },
   btnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   removeBtn: {
-    backgroundColor: Colors.accent + '20', borderRadius: Radius.md, padding: Spacing.md,
-    alignItems: 'center', marginTop: 8, borderWidth: 1, borderColor: Colors.accent + '40',
+    backgroundColor: Colors.accent + '10', borderRadius: Radius.sm, padding: Spacing.md,
+    alignItems: 'center', marginTop: 8, borderWidth: 1, borderColor: Colors.accent + '20',
   },
-  removeBtnText: { color: Colors.accent, fontWeight: '700', fontSize: 14 },
+  removeBtnText: { color: Colors.accent, fontWeight: '600', fontSize: 14 },
 });

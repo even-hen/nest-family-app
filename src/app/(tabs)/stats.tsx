@@ -4,9 +4,11 @@ import {
   ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
-import { Colors, Spacing, Radius } from '../../constants/colors';
+import { Spacing, Radius, ThemeColors } from '../../constants/colors';
+import { useAppTheme } from '../../contexts/ThemeContext';
 
 interface WeekStat {
   userId: string;
@@ -26,7 +28,18 @@ function getWeekStart(offsetWeeks = 0): string {
   return monday.toISOString().split('T')[0];
 }
 
+function toTitleCase(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 export default function StatsScreen() {
+  const { Colors } = useAppTheme();
+  const styles = getStyles(Colors);
   const { user } = useAuth();
   const [stats, setStats] = useState<WeekStat[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,8 +135,14 @@ export default function StatsScreen() {
                 <View style={styles.rankBadge}>
                   <Text style={styles.rankText}>#{idx + 1}</Text>
                 </View>
-                <Text style={styles.memberName}>{s.userName}</Text>
-                {isMe && <View style={styles.youBadge}><Text style={styles.youText}>You</Text></View>}
+                <View style={styles.nameRow}>
+                  <Text style={styles.memberName}>{toTitleCase(s.userName)}</Text>
+                  {isMe && (
+                    <View style={styles.youBadge}>
+                      <Text style={styles.youText}>You</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.completion}>{completionPct}%</Text>
               </View>
 
@@ -159,7 +178,7 @@ export default function StatsScreen() {
 
         {stats.length === 0 && (
           <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>📊</Text>
+            <Ionicons name="bar-chart-outline" size={60} color={Colors.textMuted} style={{ marginBottom: Spacing.md }} />
             <Text style={styles.emptyTitle}>No data yet</Text>
             <Text style={styles.emptyDesc}>Stats will appear once tasks are assigned</Text>
           </View>
@@ -169,14 +188,14 @@ export default function StatsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   header: {
     paddingHorizontal: Spacing.lg, paddingTop: 60, paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  title: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary, marginBottom: 8 },
+  title: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary, marginBottom: 8 },
   weekNav: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   navBtn: {
     width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.bgInput,
@@ -197,20 +216,22 @@ const styles = StyleSheet.create({
     width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bgInput,
     justifyContent: 'center', alignItems: 'center',
   },
-  rankText: { fontSize: 12, fontWeight: '800', color: Colors.textSecondary },
-  memberName: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary, flex: 1 },
+  rankText: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary },
+  memberName: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   youBadge: {
-    backgroundColor: Colors.primary + '20', borderRadius: Radius.full,
-    paddingHorizontal: 8, paddingVertical: 2,
+    height: 20, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: Colors.primary + '15', borderRadius: 4,
+    paddingHorizontal: 8, borderWidth: 1, borderColor: Colors.primary + '30',
   },
-  youText: { fontSize: 11, color: Colors.primary, fontWeight: '700' },
-  completion: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary },
+  youText: { fontSize: 10, color: Colors.primary, fontWeight: '700' },
+  completion: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary },
   barRow: { marginBottom: Spacing.md },
   barBg: { height: 6, backgroundColor: Colors.bgInput, borderRadius: Radius.full, overflow: 'hidden' },
   barFill: { height: '100%', backgroundColor: Colors.primary, borderRadius: Radius.full },
   pillsRow: { flexDirection: 'row', gap: Spacing.sm },
   pill: { flex: 1, borderRadius: Radius.md, padding: Spacing.sm, alignItems: 'center' },
-  pillNum: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary },
+  pillNum: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary },
   pillLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   empty: { alignItems: 'center', paddingVertical: 60 },
   emptyEmoji: { fontSize: 60, marginBottom: Spacing.md },

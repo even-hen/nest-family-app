@@ -5,8 +5,9 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { Colors, Spacing, Radius } from '../../constants/colors';
+import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { UserType } from '../../types';
+import { useAppTheme } from '../../contexts/ThemeContext';
 
 const USER_TYPES: { label: string; value: UserType; emoji: string; desc: string }[] = [
   { label: 'Adult', value: 'Adult', emoji: '👤', desc: 'Full admin access' },
@@ -15,6 +16,8 @@ const USER_TYPES: { label: string; value: UserType; emoji: string; desc: string 
 ];
 
 export default function RegisterScreen() {
+  const { Colors } = useAppTheme();
+  const styles = getStyles(Colors);
   const { signUp } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -160,7 +163,7 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   scroll: { flexGrow: 1, padding: Spacing.lg, paddingTop: 60 },
   back: { marginBottom: Spacing.lg },

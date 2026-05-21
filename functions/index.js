@@ -20,43 +20,37 @@ function getTodayISO() {
 
 // ─── CRON 1: Run at midnight UTC — mark overdue tasks as Skipped ────────────
 exports.markSkippedTasks = onSchedule('0 0 * * *', async () => {
-  const today = getTodayISO();
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-  // Mark all "pending" daily assignments from yesterday as skipped
-  const dailySnap = await db
+  // Mark all "pending" assignments from yesterday as skipped
+  const pendingSnap = await db
     .collection('assignments')
     .where('status', '==', 'pending')
-    .where('type', '==', 'daily')
     .where('date', '==', yesterday)
     .get();
 
   const batch = db.batch();
-  dailySnap.docs.forEach((d) => {
-    batch.update(d.ref, { status: 'skipped', skippedAt: Timestamp.now() });
-  });
-
-  // Mark weekly assignments that are past their last weekDay and still pending
-  const lastWeekStart = getMondayISO(new Date(Date.now() - 7 * 86400000));
-  const weeklySnap = await db
-    .collection('assignments')
-    .where('status', '==', 'pending')
-    .where('type', '==', 'weekly')
-    .where('weekStart', '==', lastWeekStart)
-    .get();
-
-  weeklySnap.docs.forEach((d) => {
+  pendingSnap.docs.forEach((d) => {
     batch.update(d.ref, { status: 'skipped', skippedAt: Timestamp.now() });
   });
 
   await batch.commit();
-  console.log(`Marked ${dailySnap.size + weeklySnap.size} assignments as skipped`);
+  console.log(`Marked ${pendingSnap.size} assignments from yesterday (${yesterday}) as skipped`);
 });
 
 // ─── CRON 2: Run every Monday at 01:00 UTC — auto-distribute tasks ─────────
 exports.weeklyDistribution = onSchedule('0 1 * * 1', async () => {
   const weekStart = getMondayISO(new Date());
   const groupsSnap = await db.collection('groups').where('autoDistribution', '==', true).get();
+
+  const getDateForWeekday = (weekStartStr, dayIndex) => {
+    const d = new Date(weekStartStr);
+    const offset = dayIndex === 0 ? 6 : dayIndex - 1;
+    d.setDate(d.getDate() + offset);
+    return d.toISOString().split('T')[0];
+  };
+
+  const getTaskWeeklyCost = (t) => t.complexity * (t.weekDays ? t.weekDays.length : 0);
 
   for (const groupDoc of groupsSnap.docs) {
     const groupId = groupDoc.id;
@@ -72,14 +66,11 @@ exports.weeklyDistribution = onSchedule('0 1 * * 1', async () => {
 
     // Auto-distribute (proportional by resource)
     const totalResource = users.reduce((s, u) => s + u.resource, 0);
-    const totalCost = tasks.reduce((s, t) => s + (t.type === 'daily' ? t.complexity * 7 : t.complexity), 0);
+    const totalCost = tasks.reduce((s, t) => s + getTaskWeeklyCost(t), 0);
     const capacity = {};
     users.forEach((u) => { capacity[u.id] = totalResource > 0 ? (u.resource / totalResource) * totalCost : 0; });
 
-    const sorted = [...tasks].sort((a, b) =>
-      (b.type === 'daily' ? b.complexity * 7 : b.complexity) -
-      (a.type === 'daily' ? a.complexity * 7 : a.complexity)
-    );
+    const sorted = [...tasks].sort((a, b) => getTaskWeeklyCost(b) - getTaskWeeklyCost(a));
 
     const assignments = [];
     const unassigned = [];
@@ -91,7 +82,7 @@ exports.weeklyDistribution = onSchedule('0 1 * * 1', async () => {
       if (eligible.length === 0) { unassigned.push(task); continue; }
 
       const best = eligible.reduce((p, c) => (capacity[c.id] ?? 0) > (capacity[p.id] ?? 0) ? c : p);
-      capacity[best.id] -= (task.type === 'daily' ? task.complexity * 7 : task.complexity);
+      capacity[best.id] -= getTaskWeeklyCost(task);
       assignments.push({ task, assignedTo: best.id });
     }
 
@@ -102,27 +93,23 @@ exports.weeklyDistribution = onSchedule('0 1 * * 1', async () => {
       // Update task's assignedTo
       batch.update(db.collection('tasks').doc(task.id), { assignedTo });
 
-      if (task.type === 'daily') {
-        // Create 7 daily assignments for this week
-        for (let i = 0; i < 7; i++) {
-          const d = new Date(weekStart);
-          d.setDate(d.getDate() + i);
-          const dateISO = d.toISOString().split('T')[0];
-          const ref = db.collection('assignments').doc();
-          batch.set(ref, {
-            taskId: task.id, groupId, title: task.title, complexity: task.complexity,
-            type: 'daily', weekDays: [], assignedTo, status: 'pending',
-            weekStart, date: dateISO, doneAt: null, skippedAt: null,
-            createdAt: Timestamp.now(),
-          });
-        }
-      } else {
-        // One weekly assignment
+      // Create assignments for all scheduled active days
+      const activeDays = task.weekDays || [];
+      for (const dayIndex of activeDays) {
+        const dateISO = getDateForWeekday(weekStart, dayIndex);
         const ref = db.collection('assignments').doc();
         batch.set(ref, {
-          taskId: task.id, groupId, title: task.title, complexity: task.complexity,
-          type: 'weekly', weekDays: task.weekDays ?? [], assignedTo, status: 'pending',
-          weekStart, date: weekStart, doneAt: null, skippedAt: null,
+          taskId: task.id,
+          groupId,
+          title: task.title,
+          complexity: task.complexity,
+          weekDays: task.weekDays || [],
+          assignedTo,
+          status: 'pending',
+          weekStart,
+          date: dateISO,
+          doneAt: null,
+          skippedAt: null,
           createdAt: Timestamp.now(),
         });
       }
