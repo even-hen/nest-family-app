@@ -156,7 +156,7 @@ export default function MembersScreen() {
                   <View
                     style={[
                       styles.barFill,
-                      { width: `${Math.min(100, usedPct)}%` as any, backgroundColor: usedPct > 80 ? Colors.accent : Colors.primary },
+                      { width: `${Math.min(100, usedPct)}%` as any, backgroundColor: Colors.primary },
                     ]}
                   />
                 </View>

@@ -27,12 +27,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (user?.theme) {
       setThemeState(user.theme as ThemeType);
     } else {
-      const colorScheme = Appearance.getColorScheme();
-      if (colorScheme === 'dark') {
-        setThemeState('dark');
-      } else {
-        setThemeState('light');
-      }
+      setThemeState('light');
     }
   }, [user?.theme]);
 

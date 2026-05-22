@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         timezone: data.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
         notificationTime: data.notificationTime ?? '09:00',
         language: data.language ?? 'en',
+        theme: data.theme ?? 'light',
         createdAt: data.createdAt?.toDate?.() ?? new Date(),
       });
     }

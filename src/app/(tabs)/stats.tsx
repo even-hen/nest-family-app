@@ -167,30 +167,8 @@ export default function StatsScreen() {
 
           return (
             <View key={s.userId} style={[styles.card, isMe && styles.cardMe]}>
-              <View style={styles.cardHeader}>
-                <View style={styles.rankBadge}>
-                  <Text style={styles.rankText}>#{idx + 1}</Text>
-                </View>
-                <View style={styles.nameRow}>
-                  <Text style={styles.memberName}>{toTitleCase(s.userName)}</Text>
-                  {isMe && (
-                    <View style={styles.youBadge}>
-                      <Text style={styles.youText}>You</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.completion}>{completionPct}%</Text>
-              </View>
-
-              {/* Completion bar */}
-              <View style={styles.barRow}>
-                <View style={styles.barBg}>
-                  <View style={[styles.barFill, { width: `${completionPct}%` as any }]} />
-                </View>
-              </View>
-
               {/* Stat pills */}
-              <View style={styles.pillsRow}>
+              <View style={[styles.pillsRow, { marginBottom: Spacing.md }]}>
                 <TouchableOpacity
                   style={[styles.pill, { backgroundColor: Colors.done + '20' }]}
                   activeOpacity={0.7}
@@ -234,6 +212,26 @@ export default function StatsScreen() {
                   <Text style={styles.pillNum}>{s.totalComplexityDone}</Text>
                   <Text style={[styles.pillLabel, { color: Colors.primary }]}>Points</Text>
                 </View>
+              </View>
+
+              {/* Completion bar */}
+              <View style={styles.barRow}>
+                <View style={styles.barBg}>
+                  <View style={[styles.barFill, { width: `${completionPct}%` as any }]} />
+                </View>
+              </View>
+
+              {/* Name and Percents */}
+              <View style={[styles.cardHeader, { marginBottom: 0 }]}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.memberName}>{toTitleCase(s.userName)}</Text>
+                  {isMe && (
+                    <View style={styles.youBadge}>
+                      <Text style={styles.youText}>You</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.completion}>{completionPct}%</Text>
               </View>
             </View>
           );
