@@ -73,7 +73,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon
               iconName={focused ? 'clipboard' : 'clipboard-outline'}
-              label="Chores"
+              label="Plan"
               focused={focused}
             />
           ),
@@ -85,7 +85,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon
               iconName={focused ? 'people' : 'people-outline'}
-              label="Family"
+              label="Group"
               focused={focused}
             />
           ),

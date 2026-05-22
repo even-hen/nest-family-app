@@ -44,7 +44,7 @@ export default function LoginScreen() {
             <Text style={styles.logoEmoji}>🏠</Text>
           </View>
           <Text style={styles.appName}>Nest</Text>
-          <Text style={styles.tagline}>Family task balance, simplified</Text>
+          <Text style={styles.tagline}>Group task balance, simplified</Text>
         </View>
 
         {/* Card */}

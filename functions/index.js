@@ -18,25 +18,6 @@ function getTodayISO() {
   return new Date().toISOString().split('T')[0];
 }
 
-// ─── CRON 1: Run at midnight UTC — mark overdue tasks as Skipped ────────────
-exports.markSkippedTasks = onSchedule('0 0 * * *', async () => {
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
-  // Mark all "pending" assignments from yesterday as skipped
-  const pendingSnap = await db
-    .collection('assignments')
-    .where('status', '==', 'pending')
-    .where('date', '==', yesterday)
-    .get();
-
-  const batch = db.batch();
-  pendingSnap.docs.forEach((d) => {
-    batch.update(d.ref, { status: 'skipped', skippedAt: Timestamp.now() });
-  });
-
-  await batch.commit();
-  console.log(`Marked ${pendingSnap.size} assignments from yesterday (${yesterday}) as skipped`);
-});
 
 // ─── CRON 2: Run every Monday at 01:00 UTC — auto-distribute tasks ─────────
 exports.weeklyDistribution = onSchedule('0 1 * * 1', async () => {

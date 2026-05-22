@@ -104,7 +104,7 @@ export default function MembersScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Family Members</Text>
+        <Text style={styles.title}>Members</Text>
         <Text style={styles.subtitle}>{members.length} member{members.length !== 1 ? 's' : ''}</Text>
       </View>
 

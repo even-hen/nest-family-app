@@ -133,7 +133,7 @@ export default function SetupGroupScreen() {
             <Text style={styles.emoji}>🏡</Text>
             <Text style={styles.title}>Set Up Your Home</Text>
             <Text style={styles.subtitle}>
-              Create a new family group or join an existing one
+              Create a new group or join an existing one
             </Text>
           </View>
 
@@ -144,7 +144,7 @@ export default function SetupGroupScreen() {
             <View style={styles.optionText}>
               <Text style={styles.optionTitle}>Create a Group</Text>
               <Text style={styles.optionDesc}>
-                Start fresh and invite your family members
+                Start fresh and invite your group members
               </Text>
             </View>
             <Text style={styles.optionArrow}>→</Text>
@@ -157,7 +157,7 @@ export default function SetupGroupScreen() {
             <View style={styles.optionText}>
               <Text style={styles.optionTitle}>Join a Group</Text>
               <Text style={styles.optionDesc}>
-                Enter an invite code from a family member
+                Enter an invite code from a group member
               </Text>
             </View>
             <Text style={styles.optionArrow}>→</Text>
@@ -176,7 +176,7 @@ export default function SetupGroupScreen() {
       {mode === 'create' ? (
         <>
           <Text style={styles.title}>Create Group</Text>
-          <Text style={styles.subtitle}>Give your family a name</Text>
+          <Text style={styles.subtitle}>Give your group a name</Text>
           <View style={styles.card}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Group Name</Text>

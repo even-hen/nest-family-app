@@ -3,13 +3,13 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   RefreshControl, ActivityIndicator, Alert,
 } from 'react-native';
-import { collection, query, where, getDocs, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, Timestamp, writeBatch } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { Assignment, AssignmentStatus } from '../../types';
 import { useAppTheme } from '../../contexts/ThemeContext';
-import { getTimeOfDay, formatDate, getTodayISO } from '../../utils/date';
+import { formatDate, getTodayISO, getYesterdayISO } from '../../utils/date';
 import { FIRESTORE_COLLECTIONS } from '../../constants/domain';
 
 const getStatusColor = (status: AssignmentStatus, Colors: ThemeColors): string => {
@@ -86,19 +86,43 @@ export default function AssignmentsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const greeting = useMemo(() => getTimeOfDay(), []);
   const dateLabel = useMemo(() => formatDate(new Date()), []);
+  const today = useMemo(() => getTodayISO(), []);
+  const yesterday = useMemo(() => getYesterdayISO(), []);
 
   const loadData = useCallback(async () => {
     if (!user?.groupId) return;
     try {
       const today = getTodayISO();
 
-      const [assignmentsSnap, usersSnap] = await Promise.all([
+      // Sweep: mark any past-pending assignments as skipped (client-side, timezone-aware)
+      // Runs fire-and-forget so it never blocks the UI
+      (async () => {
+        try {
+          const pastSnap = await getDocs(query(
+            collection(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS),
+            where('groupId', '==', user.groupId),
+            where('status', '==', 'pending'),
+          ));
+          const stale = pastSnap.docs.filter((d) => d.data().date < today);
+          if (stale.length > 0) {
+            const batch = writeBatch(db);
+            stale.forEach((d) => batch.update(d.ref, { status: 'skipped', skippedAt: Timestamp.now() }));
+            await batch.commit();
+          }
+        } catch (_) { /* non-critical */ }
+      })();
+
+      const [todaySnap, yesterdaySnap, usersSnap] = await Promise.all([
         getDocs(query(
           collection(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS),
           where('groupId', '==', user.groupId),
           where('date', '==', today)
+        )),
+        getDocs(query(
+          collection(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS),
+          where('groupId', '==', user.groupId),
+          where('date', '==', yesterday)
         )),
         getDocs(query(
           collection(db, FIRESTORE_COLLECTIONS.USERS),
@@ -106,7 +130,10 @@ export default function AssignmentsScreen() {
         )),
       ]);
 
-      const assignmentsList = assignmentsSnap.docs.map((d) => {
+      const assignmentsList = [
+        ...todaySnap.docs,
+        ...yesterdaySnap.docs
+      ].map((d) => {
         const data = d.data();
         return {
           id: d.id,
@@ -156,9 +183,9 @@ export default function AssignmentsScreen() {
     ? assignments
     : assignments.filter((a) => a.assignedTo === user?.id);
 
-  const pending = displayed.filter((a) => a.status === 'pending').sort((a, b) => a.complexity - b.complexity);
-  const done = displayed.filter((a) => a.status === 'done').sort((a, b) => a.complexity - b.complexity);
-  const skipped = displayed.filter((a) => a.status === 'skipped').sort((a, b) => a.complexity - b.complexity);
+  const pending = displayed.filter((a) => a.date === today && a.status === 'pending').sort((a, b) => a.complexity - b.complexity);
+  const done = displayed.filter((a) => a.date === today && a.status === 'done').sort((a, b) => a.complexity - b.complexity);
+  const skipped = displayed.filter((a) => a.date === yesterday && (a.status === 'skipped' || a.status === 'pending')).sort((a, b) => a.complexity - b.complexity);
 
   if (loading) {
     return (
@@ -173,7 +200,7 @@ export default function AssignmentsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Good {greeting}, {user?.name?.split(' ')[0]}</Text>
+          <Text style={styles.greeting}>Today's Assignments</Text>
           <Text style={styles.date}>{dateLabel}</Text>
         </View>
         <View style={styles.toggleContainer}>
@@ -249,12 +276,12 @@ export default function AssignmentsScreen() {
 
         {skipped.length > 0 && (
           <>
-            <Text style={styles.sectionTitle}>Skipped</Text>
+            <Text style={styles.sectionTitle}>Skipped Yesterday</Text>
             {skipped.map((a) => (
               <AssignmentCard
-                key={a.id} assignment={a} showAssignee={showAll}
+                key={a.id} assignment={{ ...a, status: 'skipped' }} showAssignee={showAll}
                 assigneeName={users[a.assignedTo] ?? '—'}
-                canMarkDone={a.assignedTo === user?.id || user?.type === 'Adult'}
+                canMarkDone={false}
                 onMarkDone={handleMarkDone}
               />
             ))}

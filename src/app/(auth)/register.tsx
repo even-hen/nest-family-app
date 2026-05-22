@@ -62,7 +62,7 @@ export default function RegisterScreen() {
 
         <View style={styles.header}>
           <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Join Nest and balance your family tasks</Text>
+          <Text style={styles.subtitle}>Join Nest and balance tasks of your group</Text>
         </View>
 
         <View style={styles.card}>

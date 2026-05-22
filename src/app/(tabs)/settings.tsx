@@ -13,9 +13,37 @@ import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { useAppTheme } from '../../contexts/ThemeContext';
 
 const ALL_HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0') + ':00');
-const LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'ru', label: 'Русский' },
+
+
+const TIMEZONES = [
+  { iana: 'Pacific/Midway', label: 'UTC−11  Midway Island' },
+  { iana: 'Pacific/Honolulu', label: 'UTC−10  Hawaii' },
+  { iana: 'America/Anchorage', label: 'UTC−9   Alaska' },
+  { iana: 'America/Los_Angeles', label: 'UTC−8   Pacific Time (US)' },
+  { iana: 'America/Denver', label: 'UTC−7   Mountain Time (US)' },
+  { iana: 'America/Chicago', label: 'UTC−6   Central Time (US)' },
+  { iana: 'America/New_York', label: 'UTC−5   Eastern Time (US)' },
+  { iana: 'America/Caracas', label: 'UTC−4   Caracas, La Paz' },
+  { iana: 'America/Sao_Paulo', label: 'UTC−3   Brasília' },
+  { iana: 'Atlantic/South_Georgia', label: 'UTC−2  South Georgia' },
+  { iana: 'Atlantic/Azores', label: 'UTC−1   Azores' },
+  { iana: 'Europe/London', label: 'UTC+0   London, Dublin' },
+  { iana: 'Europe/Paris', label: 'UTC+1   Paris, Berlin, Rome' },
+  { iana: 'Europe/Helsinki', label: 'UTC+2   Helsinki, Kyiv' },
+  { iana: 'Europe/Moscow', label: 'UTC+3   Moscow, Nairobi' },
+  { iana: 'Asia/Dubai', label: 'UTC+4   Dubai, Tbilisi' },
+  { iana: 'Asia/Karachi', label: 'UTC+5   Karachi, Islamabad' },
+  { iana: 'Asia/Kolkata', label: 'UTC+5:30 Mumbai, New Delhi' },
+  { iana: 'Asia/Dhaka', label: 'UTC+6   Dhaka, Almaty' },
+  { iana: 'Asia/Yangon', label: 'UTC+6:30 Yangon' },
+  { iana: 'Asia/Bangkok', label: 'UTC+7   Bangkok, Jakarta' },
+  { iana: 'Asia/Ho_Chi_Minh', label: 'UTC+7   Ho Chi Minh City' },
+  { iana: 'Asia/Shanghai', label: 'UTC+8   Beijing, Singapore' },
+  { iana: 'Asia/Tokyo', label: 'UTC+9   Tokyo, Seoul' },
+  { iana: 'Australia/Adelaide', label: 'UTC+9:30 Adelaide' },
+  { iana: 'Australia/Sydney', label: 'UTC+10  Sydney, Melbourne' },
+  { iana: 'Pacific/Noumea', label: 'UTC+11  New Caledonia' },
+  { iana: 'Pacific/Auckland', label: 'UTC+12  Auckland' },
 ];
 
 export default function SettingsScreen() {
@@ -24,10 +52,12 @@ export default function SettingsScreen() {
   const { user, refreshUser, signOut } = useAuth();
   const [generatingLink, setGeneratingLink] = useState(false);
   const [savingTime, setSavingTime] = useState(false);
-  const [savingLang, setSavingLang] = useState(false);
+
+  const [savingTimezone, setSavingTimezone] = useState(false);
   const [autoDistrib, setAutoDistrib] = useState(true);
   const [loadingAutoDistrib, setLoadingAutoDistrib] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [tzDropdownOpen, setTzDropdownOpen] = useState(false);
 
   useEffect(() => {
     const fetchGroupSettings = async () => {
@@ -103,23 +133,29 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleLanguage = async (lang: string) => {
+
+
+  const handleTimezone = async (iana: string) => {
     if (!user) return;
-    setSavingLang(true);
+    setSavingTimezone(true);
     try {
-      await updateDoc(doc(db, 'users', user.id), { language: lang });
+      await updateDoc(doc(db, 'users', user.id), { timezone: iana });
       await refreshUser();
     } catch (e) {
-      Alert.alert('Error', 'Could not update language');
+      Alert.alert('Error', 'Could not update timezone');
     } finally {
-      setSavingLang(false);
+      setSavingTimezone(false);
     }
   };
+
+  // Resolve display label for current timezone (fallback: device tz)
+  const currentTz = user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const currentTzLabel = TIMEZONES.find((t) => t.iana === currentTz)?.label ?? currentTz;
 
   const handleLeaveGroup = () => {
     Alert.alert(
       'Leave Group',
-      'Are you sure you want to leave this family group?',
+      'Are you sure you want to leave this group?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -169,7 +205,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Notification Time</Text>
           <Text style={styles.sectionDesc}>When to receive your daily reminders</Text>
-          
+
           <TouchableOpacity
             style={styles.dropdownHeader}
             onPress={() => setDropdownOpen(!dropdownOpen)}
@@ -212,24 +248,86 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* Language */}
+        {/* Timezone */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Language</Text>
-          <View style={styles.langRow}>
-            {LANGUAGES.map((l) => (
-              <TouchableOpacity
-                key={l.code}
-                style={[styles.langBtn, user?.language === l.code && styles.langBtnActive]}
-                onPress={() => handleLanguage(l.code)}
-                disabled={savingLang}
-              >
-                <Text style={[styles.langBtnText, user?.language === l.code && styles.langBtnTextActive]}>
-                  {l.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={styles.sectionTitle}>Timezone</Text>
+          <Text style={styles.sectionDesc}>Used for scheduling and daily reminders</Text>
+
+          <TouchableOpacity
+            style={styles.dropdownHeader}
+            onPress={() => setTzDropdownOpen(!tzDropdownOpen)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.dropdownHeaderText} numberOfLines={1}>
+              {currentTzLabel}
+            </Text>
+            <Text style={styles.dropdownChevron}>{tzDropdownOpen ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+
+          {tzDropdownOpen && (
+            <View style={styles.dropdownListContainer}>
+              <ScrollView style={styles.dropdownScroll} nestedScrollEnabled>
+                {TIMEZONES.map((tz) => (
+                  <TouchableOpacity
+                    key={tz.iana}
+                    style={[
+                      styles.dropdownItem,
+                      currentTz === tz.iana && styles.dropdownItemActive,
+                    ]}
+                    onPress={() => { handleTimezone(tz.iana); setTzDropdownOpen(false); }}
+                    disabled={savingTimezone}
+                  >
+                    <Text style={[
+                      styles.dropdownItemText,
+                      currentTz === tz.iana && styles.dropdownItemTextActive,
+                    ]}>
+                      {tz.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </View>
+
+        {/* Auto-distribute setting */}
+        <View style={styles.section}>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={styles.sectionTitle}>Auto-distribute tasks</Text>
+              <Text style={styles.sectionDesc}>Redistribute auto-assigned tasks every week to avoid repetition</Text>
+            </View>
+            {loadingAutoDistrib ? (
+              <ActivityIndicator color={Colors.primary} size="small" />
+            ) : (
+              <Switch
+                value={autoDistrib}
+                onValueChange={toggleAutoDistrib}
+                disabled={user?.type !== 'Adult'}
+                trackColor={{ true: Colors.primary, false: Colors.bgInput }}
+                thumbColor={autoDistrib ? Colors.primaryLight : Colors.textMuted}
+              />
+            )}
           </View>
         </View>
+
+        {/* Adult-only: Invite Members */}
+        {isAdult && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Invite Members</Text>
+            <Text style={styles.sectionDesc}>Generate a 24-hour invite code for group members</Text>
+            <TouchableOpacity
+              style={[styles.actionBtn, generatingLink && styles.btnDisabled]}
+              onPress={generateInviteLink}
+              disabled={generatingLink}
+            >
+              {generatingLink
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.actionBtnText}>Generate Invite Code</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Theme */}
         <View style={styles.section}>
@@ -255,46 +353,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Auto-distribute setting */}
-        <View style={styles.section}>
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, paddingRight: 8 }}>
-              <Text style={styles.sectionTitle}>Auto-distribute tasks</Text>
-              <Text style={styles.sectionDesc}>Automatically assign unassigned active tasks at the beginning of a new week</Text>
-            </View>
-            {loadingAutoDistrib ? (
-              <ActivityIndicator color={Colors.primary} size="small" />
-            ) : (
-              <Switch
-                value={autoDistrib}
-                onValueChange={toggleAutoDistrib}
-                disabled={user?.type !== 'Adult'}
-                trackColor={{ true: Colors.primary, false: Colors.bgInput }}
-                thumbColor={autoDistrib ? Colors.primaryLight : Colors.textMuted}
-              />
-            )}
-          </View>
-        </View>
 
-        {/* Adult-only: Invite */}
-        {isAdult && (
-          <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Invite Members</Text>
-              <Text style={styles.sectionDesc}>Generate a 24-hour invite code for family members</Text>
-              <TouchableOpacity
-                style={[styles.actionBtn, generatingLink && styles.btnDisabled]}
-                onPress={generateInviteLink}
-                disabled={generatingLink}
-              >
-                {generatingLink
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={styles.actionBtnText}>Generate Invite Code</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
 
         {/* Danger Zone */}
         <View style={[styles.section, styles.dangerSection]}>

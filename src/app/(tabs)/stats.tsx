@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl,
+  ActivityIndicator, RefreshControl, Modal,
 } from 'react-native';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,8 +24,12 @@ function getWeekStart(offsetWeeks = 0): string {
   const d = new Date();
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1) - offsetWeeks * 7;
-  const monday = new Date(d.setDate(diff));
-  return monday.toISOString().split('T')[0];
+  d.setDate(diff);
+  // Use local date parts to match how weekStart is stored in Firestore
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${date}`;
 }
 
 function toTitleCase(str: string): string {
@@ -45,6 +49,12 @@ export default function StatsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
+
+  // Detail Modal States
+  const [allAssignments, setAllAssignments] = useState<any[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [detailUser, setDetailUser] = useState<{ id: string; name: string } | null>(null);
+  const [detailStatus, setDetailStatus] = useState<'done' | 'skipped' | 'pending' | null>(null);
 
   const loadStats = useCallback(async () => {
     if (!user?.groupId) return;
@@ -75,8 +85,10 @@ export default function StatsScreen() {
       };
     }
 
+    const loadedAssignments: any[] = [];
     assignmentsSnap.docs.forEach((d) => {
       const data = d.data();
+      loadedAssignments.push({ id: d.id, ...data });
       const uid = data.assignedTo;
       if (!statsMap[uid]) return;
       if (data.status === 'done') {
@@ -89,11 +101,25 @@ export default function StatsScreen() {
       }
     });
 
+    setAllAssignments(loadedAssignments);
     setStats(Object.values(statsMap).sort((a, b) => b.done - a.done));
   }, [user?.groupId, weekOffset]);
 
   useEffect(() => { loadStats().finally(() => setLoading(false)); }, [loadStats]);
   const onRefresh = async () => { setRefreshing(true); await loadStats(); setRefreshing(false); };
+
+  const formatAssignmentDate = useCallback((dateStr: string): string => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const d = new Date(year, month - 1, day);
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  }, []);
+
+  const filteredAssignments = useMemo(() => {
+    if (!detailUser || !detailStatus) return [];
+    return allAssignments
+      .filter((a) => a.assignedTo === detailUser.id && a.status === detailStatus)
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [allAssignments, detailUser, detailStatus]);
 
   const weekLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Last Week' : `${weekOffset} Weeks Ago`;
 
@@ -106,16 +132,25 @@ export default function StatsScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Weekly Stats</Text>
         <View style={styles.weekNav}>
-          <TouchableOpacity style={styles.navBtn} onPress={() => setWeekOffset((w) => w + 1)}>
-            <Text style={styles.navBtnText}>‹</Text>
+          <TouchableOpacity
+            style={styles.navBtn}
+            onPress={() => setWeekOffset((w) => w + 1)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chevron-back" size={16} color={Colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.weekLabel}>{weekLabel}</Text>
           <TouchableOpacity
             style={[styles.navBtn, weekOffset === 0 && styles.navBtnDisabled]}
             onPress={() => setWeekOffset((w) => Math.max(0, w - 1))}
             disabled={weekOffset === 0}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.navBtnText, weekOffset === 0 && styles.navBtnTextDisabled]}>›</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={weekOffset === 0 ? Colors.textMuted : Colors.textPrimary}
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -155,18 +190,45 @@ export default function StatsScreen() {
 
               {/* Stat pills */}
               <View style={styles.pillsRow}>
-                <View style={[styles.pill, { backgroundColor: Colors.done + '20' }]}>
+                <TouchableOpacity
+                  style={[styles.pill, { backgroundColor: Colors.done + '20' }]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setDetailUser({ id: s.userId, name: s.userName });
+                    setDetailStatus('done');
+                    setModalVisible(true);
+                  }}
+                >
                   <Text style={styles.pillNum}>{s.done}</Text>
                   <Text style={[styles.pillLabel, { color: Colors.done }]}>Done</Text>
-                </View>
-                <View style={[styles.pill, { backgroundColor: Colors.skipped + '20' }]}>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.pill, { backgroundColor: Colors.skipped + '20' }]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setDetailUser({ id: s.userId, name: s.userName });
+                    setDetailStatus('skipped');
+                    setModalVisible(true);
+                  }}
+                >
                   <Text style={styles.pillNum}>{s.skipped}</Text>
                   <Text style={[styles.pillLabel, { color: Colors.skipped }]}>Skipped</Text>
-                </View>
-                <View style={[styles.pill, { backgroundColor: Colors.pending + '20' }]}>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.pill, { backgroundColor: Colors.pending + '20' }]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setDetailUser({ id: s.userId, name: s.userName });
+                    setDetailStatus('pending');
+                    setModalVisible(true);
+                  }}
+                >
                   <Text style={styles.pillNum}>{s.pending}</Text>
                   <Text style={[styles.pillLabel, { color: Colors.pending }]}>Pending</Text>
-                </View>
+                </TouchableOpacity>
+
                 <View style={[styles.pill, { backgroundColor: Colors.primary + '20' }]}>
                   <Text style={styles.pillNum}>{s.totalComplexityDone}</Text>
                   <Text style={[styles.pillLabel, { color: Colors.primary }]}>Points</Text>
@@ -184,6 +246,57 @@ export default function StatsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Stats Detail Modal */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>
+                {detailUser ? toTitleCase(detailUser.name) : ''}
+              </Text>
+              <Text style={styles.modalSubtitle}>
+                {detailStatus === 'done' ? 'Completed Tasks' : detailStatus === 'skipped' ? 'Skipped Tasks' : 'Pending Tasks'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeBtn} activeOpacity={0.7}>
+              <Ionicons name="close" size={24} color={Colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalList}>
+            {filteredAssignments.length === 0 ? (
+              <View style={styles.modalEmpty}>
+                <Ionicons
+                  name={detailStatus === 'done' ? 'checkbox-outline' : detailStatus === 'skipped' ? 'close-circle-outline' : 'time-outline'}
+                  size={48}
+                  color={Colors.textMuted}
+                  style={{ marginBottom: Spacing.sm }}
+                />
+                <Text style={styles.modalEmptyText}>No tasks found</Text>
+              </View>
+            ) : (
+              filteredAssignments.map((a) => (
+                <View key={a.id} style={styles.modalCard}>
+                  <View style={styles.modalCardHeader}>
+                    <Text style={styles.modalCardTitle}>{a.title}</Text>
+                    <Text style={styles.modalCardPoints}>{a.complexity} pts</Text>
+                  </View>
+                  <View style={styles.modalCardFooter}>
+                    <Ionicons name="calendar-outline" size={14} color={Colors.textSecondary} />
+                    <Text style={styles.modalCardDate}>{formatAssignmentDate(a.date)}</Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -202,8 +315,6 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   navBtnDisabled: { opacity: 0.3 },
-  navBtnText: { fontSize: 18, color: Colors.textPrimary, fontWeight: '700' },
-  navBtnTextDisabled: { color: Colors.textMuted },
   weekLabel: { fontSize: 14, color: Colors.textSecondary, fontWeight: '600', flex: 1 },
   list: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 100 },
   card: {
@@ -237,4 +348,28 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   emptyEmoji: { fontSize: 60, marginBottom: Spacing.md },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   emptyDesc: { fontSize: 14, color: Colors.textSecondary, marginTop: 4 },
+  modalContainer: { flex: 1, backgroundColor: Colors.bg },
+  modalHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    padding: Spacing.lg, paddingTop: 30, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    backgroundColor: Colors.bgCard,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
+  modalSubtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
+  closeBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bgInput,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  modalList: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 60 },
+  modalCard: {
+    backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  modalCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  modalCardTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary, flex: 1, marginRight: Spacing.sm },
+  modalCardPoints: { fontSize: 13, fontWeight: '600', color: 'rgb(255, 179, 71)' },
+  modalCardFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  modalCardDate: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
+  modalEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
+  modalEmptyText: { fontSize: 15, color: Colors.textMuted, fontWeight: '500' },
 });
