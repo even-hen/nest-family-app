@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Modal, TextInput, Alert, ActivityIndicator, Switch, RefreshControl,
@@ -6,6 +6,7 @@ import {
 import {
   collection, query, where, getDocs, doc, updateDoc, deleteDoc,
 } from 'firebase/firestore';
+import { useFocusEffect } from 'expo-router';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
@@ -42,7 +43,7 @@ export default function MembersScreen() {
     })));
   }, [currentUser?.groupId]);
 
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
+  useFocusEffect(useCallback(() => { loadData().finally(() => setLoading(false)); }, [loadData]));
   const onRefresh = async () => { setRefreshing(true); await loadData(); setRefreshing(false); };
 
   // Calculate resource usage for a user

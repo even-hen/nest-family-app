@@ -26,7 +26,7 @@ function TabIcon({
         size={22}
         color={focused ? Colors.tabActive : Colors.tabInactive}
       />
-      <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
+      <Text numberOfLines={1} style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
     </View>
   );
 }
@@ -124,11 +124,11 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
     backgroundColor: Colors.bgCard,
     borderTopColor: Colors.border,
     borderTopWidth: 1,
-    height: 70,
+    height: 76,
     paddingBottom: 8,
-    paddingTop: 4,
+    paddingTop: 12,
   },
-  tabItem: { alignItems: 'center', justifyContent: 'center', gap: 4 },
+  tabItem: { alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 50 },
   tabLabel: { fontSize: 10, color: Colors.tabInactive, fontWeight: '500' },
   tabLabelActive: { color: Colors.tabActive },
 });

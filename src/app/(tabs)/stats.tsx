@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, RefreshControl, Modal,
 } from 'react-native';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -105,7 +106,7 @@ export default function StatsScreen() {
     setStats(Object.values(statsMap).sort((a, b) => b.done - a.done));
   }, [user?.groupId, weekOffset]);
 
-  useEffect(() => { loadStats().finally(() => setLoading(false)); }, [loadStats]);
+  useFocusEffect(useCallback(() => { loadStats().finally(() => setLoading(false)); }, [loadStats]));
   const onRefresh = async () => { setRefreshing(true); await loadStats(); setRefreshing(false); };
 
   const formatAssignmentDate = useCallback((dateStr: string): string => {

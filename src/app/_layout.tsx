@@ -5,11 +5,11 @@ import { AuthProvider } from '../contexts/AuthContext';
 import { ThemeProvider, useAppTheme } from '../contexts/ThemeContext';
 
 function ThemedApp() {
-  const { theme } = useAppTheme();
+  const { theme, Colors } = useAppTheme();
   return (
     <>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.bg } }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
