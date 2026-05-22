@@ -74,7 +74,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    setFirebaseUid(cred.user.uid);
+    await fetchUser(cred.user.uid);
   };
 
   const signUp = async (
