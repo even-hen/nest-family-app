@@ -1,9 +1,10 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { ThemeColors } from '../../constants/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../contexts/AuthContext';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -34,6 +35,15 @@ function TabIcon({
 export default function TabsLayout() {
   const { Colors } = useAppTheme();
   const styles = getStyles(Colors);
+  const { user, loading } = useAuth();
+  
+  if (!loading && !user) {
+    return <Redirect href="/(auth)/login" />;
+  }
+  
+  if (!loading && user && !user.groupId) {
+    return <Redirect href="/(auth)/setup-group" />;
+  }
 
   return (
     <Tabs
