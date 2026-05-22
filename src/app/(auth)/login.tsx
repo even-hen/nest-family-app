@@ -11,7 +11,7 @@ import { useAppTheme } from '../../contexts/ThemeContext';
 export default function LoginScreen() {
   const { Colors } = useAppTheme();
   const styles = getStyles(Colors);
-  const { signIn } = useAuth();
+  const { signIn, resetPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,6 +27,22 @@ export default function LoginScreen() {
       router.replace('/');
     } catch (e: any) {
       Alert.alert('Login Failed', e?.message ?? 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert('Reset Password', 'Please enter your email address in the field above first, then tap "Forgot password?" again.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await resetPassword(email.trim());
+      Alert.alert('Success', 'Password reset email sent! Please check your inbox.');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not send reset email');
     } finally {
       setLoading(false);
     }
@@ -77,6 +93,10 @@ export default function LoginScreen() {
               secureTextEntry
             />
           </View>
+
+          <TouchableOpacity onPress={handleForgotPassword} style={styles.forgotBtn}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.btn, loading && styles.btnDisabled]}
@@ -142,6 +162,8 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
     padding: Spacing.md, alignItems: 'center', marginTop: Spacing.sm,
     shadowColor: Colors.primary, shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
   },
+  forgotBtn: { alignItems: 'flex-end', marginBottom: Spacing.md },
+  forgotText: { color: Colors.primary, fontSize: 13, fontWeight: '600' },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: Spacing.lg },
