@@ -130,5 +130,5 @@ export function calculateResourceUsage(
   const userShare = totalResource > 0 ? (Number(userResource || 0) / totalResource) * totalCost : 0;
 
   if (userShare === 0) return 0;
-  return Math.min(100, Math.round((assignedCost / userShare) * 100));
+  return Math.round((assignedCost / userShare) * 100);
 }

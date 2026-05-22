@@ -115,7 +115,7 @@ export default function MembersScreen() {
         {members.map((m) => {
           const usedCost = getResourceUsed(m.id);
           const userShare = totalResource > 0 ? (m.resource / totalResource) * totalWeeklyCost : 0;
-          const usedPct = userShare > 0 ? Math.min(100, Math.round((usedCost / userShare) * 100)) : 0;
+          const usedPct = userShare > 0 ? Math.round((usedCost / userShare) * 100) : 0;
           const canEdit = isAdult || m.id === currentUser?.id;
           const initial = m.name?.[0]?.toUpperCase() ?? '?';
 
@@ -155,7 +155,7 @@ export default function MembersScreen() {
                   <View
                     style={[
                       styles.barFill,
-                      { width: `${usedPct}%` as any, backgroundColor: usedPct > 80 ? Colors.accent : Colors.primary },
+                      { width: `${Math.min(100, usedPct)}%` as any, backgroundColor: usedPct > 80 ? Colors.accent : Colors.primary },
                     ]}
                   />
                 </View>
