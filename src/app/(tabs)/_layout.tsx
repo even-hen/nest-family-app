@@ -36,11 +36,11 @@ export default function TabsLayout() {
   const { Colors } = useAppTheme();
   const styles = getStyles(Colors);
   const { user, loading } = useAuth();
-  
+
   if (!loading && !user) {
     return <Redirect href="/(auth)/login" />;
   }
-  
+
   if (!loading && user && !user.groupId) {
     return <Redirect href="/(auth)/setup-group" />;
   }
@@ -95,7 +95,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon
               iconName={focused ? 'people' : 'people-outline'}
-              label="Group"
+              label="Family"
               focused={focused}
             />
           ),
