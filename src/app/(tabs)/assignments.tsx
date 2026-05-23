@@ -350,7 +350,7 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3 },
   statusText: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   doneBtn: {
-    backgroundColor: Colors.primary, borderRadius: Radius.sm,
+    backgroundColor: Colors.success, borderRadius: Radius.sm,
     paddingHorizontal: 12, paddingVertical: 6,
   },
   doneBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
