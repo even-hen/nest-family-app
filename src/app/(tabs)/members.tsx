@@ -201,16 +201,48 @@ export default function MembersScreen() {
             )}
 
             <Text style={styles.label}>Capacity: <Text style={{ color: Colors.primary }}>{form.resource}</Text></Text>
-            <View style={styles.sliderRow}>
-              {[25, 50, 75, 100].map((v) => (
-                <TouchableOpacity
-                  key={v}
-                  style={[styles.sliderBtn, form.resource === v && styles.sliderBtnActive]}
-                  onPress={() => setForm((p) => ({ ...p, resource: v }))}
-                >
-                  <Text style={[styles.sliderText, form.resource === v && styles.sliderTextActive]}>{v}</Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.sliderContainer}>
+              <TouchableOpacity
+                style={styles.adjustBtn}
+                onPress={() => setForm((p) => ({ ...p, resource: Math.max(0, p.resource - 10) }))}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.adjustBtnText}>−</Text>
+              </TouchableOpacity>
+
+              <View style={styles.trackWrapper}>
+                <View style={styles.trackBg} />
+                <View style={[styles.trackFill, { width: `${form.resource}%` }]} />
+                
+                <View style={styles.ticksContainer}>
+                  {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((val) => {
+                    const isActive = val <= form.resource;
+                    const isThumb = val === form.resource;
+                    return (
+                      <TouchableOpacity
+                        key={val}
+                        style={styles.tickTouchArea}
+                        onPress={() => setForm((p) => ({ ...p, resource: val }))}
+                        activeOpacity={1}
+                      >
+                        <View style={[
+                          styles.tickDot,
+                          isActive && styles.tickDotActive,
+                          isThumb && styles.tickThumb
+                        ]} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.adjustBtn}
+                onPress={() => setForm((p) => ({ ...p, resource: Math.min(100, p.resource + 10) }))}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.adjustBtnText}>+</Text>
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity style={[styles.saveBtn, saving && styles.btnDisabled]} onPress={handleSave} disabled={saving}>
@@ -290,14 +322,83 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
   },
   typeBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
-  sliderRow: { flexDirection: 'row', gap: Spacing.sm },
-  sliderBtn: {
-    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md,
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  sliderBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '15' },
-  sliderText: { color: Colors.textSecondary, fontWeight: '600' },
-  sliderTextActive: { color: Colors.primary, fontWeight: '600' },
+  adjustBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.bgInput,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  adjustBtnText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  trackWrapper: {
+    flex: 1,
+    height: 40,
+    justifyContent: 'center',
+    marginHorizontal: Spacing.sm,
+    position: 'relative',
+  },
+  trackBg: {
+    height: 6,
+    backgroundColor: Colors.bgInput,
+    borderRadius: 3,
+    width: '100%',
+  },
+  trackFill: {
+    height: 6,
+    backgroundColor: Colors.primary,
+    borderRadius: 3,
+    position: 'absolute',
+    left: 0,
+  },
+  ticksContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  tickTouchArea: {
+    width: 24,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tickDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.border,
+  },
+  tickDotActive: {
+    backgroundColor: Colors.primary,
+  },
+  tickThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#fff',
+    borderWidth: 4,
+    borderColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   saveBtn: {
     backgroundColor: Colors.primary, borderRadius: Radius.sm, padding: Spacing.md, alignItems: 'center', marginTop: 16,
   },

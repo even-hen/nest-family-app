@@ -124,18 +124,48 @@ export default function RegisterScreen() {
             <Text style={styles.hint}>
               How much of the household workload can you handle?
             </Text>
-            <View style={styles.sliderRow}>
-              {[25, 50, 75, 100].map((v) => (
-                <TouchableOpacity
-                  key={v}
-                  style={[styles.sliderBtn, resource === v && styles.sliderBtnActive]}
-                  onPress={() => setResource(v)}
-                >
-                  <Text style={[styles.sliderBtnText, resource === v && styles.sliderBtnTextActive]}>
-                    {v}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.sliderContainer}>
+              <TouchableOpacity
+                style={styles.adjustBtn}
+                onPress={() => setResource(Math.max(0, resource - 10))}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.adjustBtnText}>−</Text>
+              </TouchableOpacity>
+
+              <View style={styles.trackWrapper}>
+                <View style={styles.trackBg} />
+                <View style={[styles.trackFill, { width: `${resource}%` }]} />
+                
+                <View style={styles.ticksContainer}>
+                  {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((val) => {
+                    const isActive = val <= resource;
+                    const isThumb = val === resource;
+                    return (
+                      <TouchableOpacity
+                        key={val}
+                        style={styles.tickTouchArea}
+                        onPress={() => setResource(val)}
+                        activeOpacity={1}
+                      >
+                        <View style={[
+                          styles.tickDot,
+                          isActive && styles.tickDotActive,
+                          isThumb && styles.tickThumb
+                        ]} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.adjustBtn}
+                onPress={() => setResource(Math.min(100, resource + 10))}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.adjustBtnText}>+</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -192,14 +222,83 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   typeLabelActive: { color: Colors.primary },
   typeDesc: { fontSize: 10, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
   hint: { fontSize: 12, color: Colors.textMuted, marginBottom: Spacing.sm },
-  sliderRow: { flexDirection: 'row', gap: Spacing.sm },
-  sliderBtn: {
-    flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.md,
-    padding: Spacing.sm, alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  sliderBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.bgCardAlt },
-  sliderBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 14 },
-  sliderBtnTextActive: { color: Colors.primary },
+  adjustBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.bgInput,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  adjustBtnText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  trackWrapper: {
+    flex: 1,
+    height: 40,
+    justifyContent: 'center',
+    marginHorizontal: Spacing.sm,
+    position: 'relative',
+  },
+  trackBg: {
+    height: 6,
+    backgroundColor: Colors.bgInput,
+    borderRadius: 3,
+    width: '100%',
+  },
+  trackFill: {
+    height: 6,
+    backgroundColor: Colors.primary,
+    borderRadius: 3,
+    position: 'absolute',
+    left: 0,
+  },
+  ticksContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  tickTouchArea: {
+    width: 24,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tickDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.border,
+  },
+  tickDotActive: {
+    backgroundColor: Colors.primary,
+  },
+  tickThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#fff',
+    borderWidth: 4,
+    borderColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 4,
+  },
   accent: { color: Colors.primary },
   btn: {
     backgroundColor: Colors.primary, borderRadius: Radius.md,
