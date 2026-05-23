@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { Task, UserType, User, Assignment } from '../../types';
+import { syncLocalNotifications } from '../../lib/notifications';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { getTypeColor } from '../../utils/colors';
 import { USER_TYPES, DAYS_OF_WEEK, ALL_WEEK_DAYS, FIRESTORE_COLLECTIONS } from '../../constants/domain';
@@ -311,6 +312,9 @@ export default function TasksScreen() {
 
       await loadData();
       setModalVisible(false);
+      if (user) {
+        syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
+      }
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save task');
     } finally {
@@ -345,6 +349,9 @@ export default function TasksScreen() {
 
             setTasks((prev) => prev.filter((t) => t.id !== id));
             setModalVisible(false);
+            if (user) {
+              syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
+            }
           } catch (e: any) {
             Alert.alert('Error', e?.message ?? 'Could not delete task');
           }
@@ -469,6 +476,9 @@ export default function TasksScreen() {
 
         await batch.commit();
         await loadData();
+        if (user) {
+          syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
+        }
         if (Platform.OS === 'web') {
           window.alert('Auto-assigned tasks shuffled successfully!');
         } else {

@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { User, UserType } from '../types';
+import { syncLocalNotifications } from '../lib/notifications';
 
 interface AuthContextType {
   user: User | null;
@@ -43,19 +44,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const snap = await getDoc(doc(db, 'users', uid));
     if (snap.exists()) {
       const data = snap.data();
+      const timezone = data.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const notificationTime = data.notificationTime ?? '09:00';
+      const type = data.type as UserType;
+      const groupId = data.groupId ?? null;
+
       setUser({
         id: uid,
         email: data.email,
         name: data.name,
-        type: data.type,
+        type,
         resource: data.resource,
-        groupId: data.groupId ?? null,
-        timezone: data.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-        notificationTime: data.notificationTime ?? '09:00',
+        groupId,
+        timezone,
+        notificationTime,
         language: data.language ?? 'en',
         theme: data.theme ?? 'light',
         createdAt: data.createdAt?.toDate?.() ?? new Date(),
       });
+
+      // Synchronize local notifications on the device
+      syncLocalNotifications(uid, groupId, type, notificationTime);
     }
   };
 

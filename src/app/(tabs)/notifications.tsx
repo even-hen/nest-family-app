@@ -3,15 +3,15 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
-import {
-  collection, query, where, getDocs, doc, updateDoc, writeBatch,
-} from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
-import { Notification } from '../../types';
+import { Notification, Assignment } from '../../types';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { getTodayISO, getYesterdayISO, getMondayISO } from '../../utils/date';
 
 const TYPE_ICONS: Record<string, string> = {
   daily_summary: 'clipboard-outline',
@@ -25,42 +25,184 @@ export default function NotificationsScreen() {
   const styles = getStyles(Colors);
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [readIds, setReadIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadNotifications = useCallback(async () => {
+  // Load local read IDs from AsyncStorage
+  const loadReadStates = useCallback(async () => {
     if (!user?.id) return;
-    const snap = await getDocs(
-      query(collection(db, 'notifications'), where('userId', '==', user.id))
-    );
-    const list = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-      createdAt: d.data().createdAt?.toDate?.() ?? new Date(),
-    } as Notification));
-    // Sort newest first, cap at 50
-    list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    setNotifications(list.slice(0, 50));
+    try {
+      const stored = await AsyncStorage.getItem(`read_notifs_${user.id}`);
+      if (stored) {
+        setReadIds(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.error('Error loading read states:', e);
+    }
   }, [user?.id]);
 
-  useEffect(() => { loadNotifications().finally(() => setLoading(false)); }, [loadNotifications]);
-  const onRefresh = async () => { setRefreshing(true); await loadNotifications(); setRefreshing(false); };
+  const loadNotifications = useCallback(async () => {
+    if (!user?.id || !user.groupId) return;
+    
+    try {
+      const todayISO = getTodayISO();
+      const yesterdayISO = getYesterdayISO();
+      const lastWeekStart = getMondayISO(new Date(Date.now() - 7 * 86400000));
+
+      // Fetch user assignments and group users
+      const [assignmentsSnap, groupUsersSnap] = await Promise.all([
+        getDocs(
+          query(
+            collection(db, 'assignments'),
+            where('assignedTo', '==', user.id)
+          )
+        ),
+        getDocs(
+          query(
+            collection(db, 'users'),
+            where('groupId', '==', user.groupId)
+          )
+        ),
+      ]);
+
+      const userAssignments = assignmentsSnap.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() } as Assignment)
+      );
+
+      const userNames: Record<string, string> = {};
+      groupUsersSnap.docs.forEach((doc) => {
+        userNames[doc.id] = doc.data().name;
+      });
+
+      const generatedNotifs: Notification[] = [];
+
+      // 1. Missed Yesterday
+      const yesterdayMissed = userAssignments.filter(
+        (a) => a.date === yesterdayISO && a.status === 'pending'
+      );
+      if (yesterdayMissed.length > 0) {
+        const titles = yesterdayMissed.map((a) => a.title).slice(0, 3).join(', ');
+        generatedNotifs.push({
+          id: `missed_yesterday_${yesterdayISO}`,
+          userId: user.id,
+          groupId: user.groupId,
+          isRead: false,
+          type: 'missed_task',
+          title: "🕰️ Yesterday's Missed Tasks",
+          body: `You didn't complete ${yesterdayMissed.length} task(s) yesterday (${titles}${yesterdayMissed.length > 3 ? '…' : ''}). Please remember that consistency helps the whole family! Try to catch up today if you can.`,
+          createdAt: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
+        });
+      }
+
+      // 2. Daily Summary
+      const todayPending = userAssignments.filter(
+        (a) => a.date === todayISO && a.status === 'pending'
+      );
+      if (todayPending.length > 0) {
+        const titles = todayPending.map((a) => a.title).slice(0, 5).join(', ');
+        generatedNotifs.push({
+          id: `daily_summary_${todayISO}`,
+          userId: user.id,
+          groupId: user.groupId,
+          isRead: false,
+          type: 'daily_summary',
+          title: "📋 Today's Tasks",
+          body: `You have ${todayPending.length} task(s) pending: ${titles}${todayPending.length > 5 ? '…' : '.'}`,
+          createdAt: new Date(), // Just now
+        });
+      }
+
+      // 3. Weekly Missed Tasks Report (Adults only)
+      if (user.type === 'Adult') {
+        const skippedSnap = await getDocs(
+          query(
+            collection(db, 'assignments'),
+            where('groupId', '==', user.groupId),
+            where('weekStart', '==', lastWeekStart),
+            where('status', '==', 'skipped')
+          )
+        );
+
+        const skippedTasks = skippedSnap.docs.map((doc) => doc.data() as Assignment);
+        
+        if (skippedTasks.length > 0) {
+          const skippedByUser: Record<string, string[]> = {};
+          skippedTasks.forEach((t) => {
+            const uid = t.assignedTo;
+            if (uid) {
+              if (!skippedByUser[uid]) skippedByUser[uid] = [];
+              skippedByUser[uid].push(t.title);
+            }
+          });
+
+          if (Object.keys(skippedByUser).length > 0) {
+            const reportLines = Object.entries(skippedByUser)
+              .map(([uid, titles]) => `${userNames[uid] ?? uid}: ${titles.join(', ')}`)
+              .join('\n');
+
+            generatedNotifs.push({
+              id: `weekly_report_${lastWeekStart}`,
+              userId: user.id,
+              groupId: user.groupId,
+              isRead: false,
+              type: 'weekly_report',
+              title: '📊 Weekly Missed Tasks Report',
+              body: `Last week some tasks were skipped:\n${reportLines}\n\nTip: Consider reducing task complexity or adjusting capacity for members who frequently skip.`,
+              createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+            });
+          }
+        }
+      }
+
+      // Sort newest first
+      setNotifications(generatedNotifs);
+    } catch (e) {
+      console.error('Error fetching/generating notifications:', e);
+    }
+  }, [user]);
+
+  const initData = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([loadReadStates(), loadNotifications()]);
+    setLoading(false);
+  }, [loadReadStates, loadNotifications]);
+
+  useEffect(() => {
+    initData();
+  }, [initData]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadNotifications();
+    setRefreshing(false);
+  };
 
   const markRead = async (id: string) => {
-    await updateDoc(doc(db, 'notifications', id), { isRead: true });
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, isRead: true } : n));
+    if (!user?.id) return;
+    try {
+      const updated = [...readIds, id];
+      setReadIds(updated);
+      await AsyncStorage.setItem(`read_notifs_${user.id}`, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error marking as read:', e);
+    }
   };
 
   const markAllRead = async () => {
-    const unread = notifications.filter((n) => !n.isRead);
-    if (unread.length === 0) return;
-    const batch = writeBatch(db);
-    unread.forEach((n) => batch.update(doc(db, 'notifications', n.id), { isRead: true }));
-    await batch.commit();
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    if (!user?.id) return;
+    try {
+      const unread = notifications.filter((n) => !readIds.includes(n.id));
+      if (unread.length === 0) return;
+      const updated = [...readIds, ...unread.map((n) => n.id)];
+      setReadIds(updated);
+      await AsyncStorage.setItem(`read_notifs_${user.id}`, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Error marking all as read:', e);
+    }
   };
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const unreadCount = notifications.filter((n) => !readIds.includes(n.id)).length;
 
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;
@@ -92,30 +234,33 @@ export default function NotificationsScreen() {
           </View>
         )}
 
-        {notifications.map((n) => (
-          <TouchableOpacity
-            key={n.id}
-            style={[styles.card, !n.isRead && styles.cardUnread]}
-            onPress={() => !n.isRead && markRead(n.id)}
-            activeOpacity={0.8}
-          >
-            <View style={styles.cardIcon}>
-              <Ionicons
-                name={(TYPE_ICONS[n.type] ?? 'notifications-outline') as any}
-                size={22}
-                color={Colors.primary}
-              />
-            </View>
-            <View style={styles.cardBody}>
-              <View style={styles.cardTitleRow}>
-                <Text style={styles.cardTitle}>{n.title}</Text>
-                {!n.isRead && <View style={styles.unreadDot} />}
+        {notifications.map((n) => {
+          const isRead = readIds.includes(n.id);
+          return (
+            <TouchableOpacity
+              key={n.id}
+              style={[styles.card, !isRead && styles.cardUnread]}
+              onPress={() => !isRead && markRead(n.id)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.cardIcon}>
+                <Ionicons
+                  name={(TYPE_ICONS[n.type] ?? 'notifications-outline') as any}
+                  size={22}
+                  color={Colors.primary}
+                />
               </View>
-              <Text style={styles.cardText}>{n.body}</Text>
-              <Text style={styles.cardTime}>{formatRelativeTime(n.createdAt)}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+              <View style={styles.cardBody}>
+                <View style={styles.cardTitleRow}>
+                  <Text style={styles.cardTitle}>{n.title}</Text>
+                  {!isRead && <View style={styles.unreadDot} />}
+                </View>
+                <Text style={styles.cardText}>{n.body}</Text>
+                <Text style={styles.cardTime}>{formatRelativeTime(n.createdAt)}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
     </View>
   );

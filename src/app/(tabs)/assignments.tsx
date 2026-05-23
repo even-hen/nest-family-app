@@ -11,6 +11,7 @@ import { Assignment, AssignmentStatus } from '../../types';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { formatDate, getTodayISO, getYesterdayISO } from '../../utils/date';
 import { FIRESTORE_COLLECTIONS } from '../../constants/domain';
+import { syncLocalNotifications } from '../../lib/notifications';
 
 const getStatusColor = (status: AssignmentStatus, Colors: ThemeColors): string => {
   if (status === 'pending') return Colors.pending;
@@ -174,6 +175,11 @@ export default function AssignmentsScreen() {
       setAssignments((prev) =>
         prev.map((a) => a.id === id ? { ...a, status: 'done', doneAt: new Date() } : a)
       );
+      
+      // Update scheduled local notifications on device
+      if (user) {
+        syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
+      }
     } catch (e) {
       Alert.alert('Error', 'Could not update task');
     }

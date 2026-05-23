@@ -41,7 +41,7 @@ exports.weeklyDistribution = onSchedule('0 * * * *', async () => {
       .where('groupId', '==', groupId)
       .where('type', '==', 'Adult')
       .get();
-      
+
     let tz = 'UTC';
     if (!adultsSnap.empty) {
       tz = adultsSnap.docs[0].data().timezone || 'UTC';
@@ -71,7 +71,7 @@ exports.weeklyDistribution = onSchedule('0 * * * *', async () => {
       .where('weekStart', '==', weekStart)
       .limit(1)
       .get();
-    
+
     if (!existingSnap.empty) continue;
 
     const [tasksSnap, usersSnap] = await Promise.all([
@@ -182,179 +182,4 @@ exports.weeklyDistribution = onSchedule('0 * * * *', async () => {
 
     console.log(`Group ${groupId}: ${assignments.length} assigned, ${unassigned.length} unassigned`);
   }
-});
-
-// ─── CRON 3: Daily personal summary notifications ──────────────────────────
-// Runs every hour, checks which users have notificationTime matching their local current hour
-exports.dailySummaryNotifications = onSchedule('0 * * * *', async () => {
-  const usersSnap = await db.collection('users').get();
-  if (usersSnap.empty) return;
-
-  const batch = db.batch();
-
-  for (const userDoc of usersSnap.docs) {
-    const data = userDoc.data();
-    const userId = userDoc.id;
-    const groupId = data.groupId;
-    if (!groupId) continue;
-
-    const tz = data.timezone || 'UTC';
-    const notifTime = data.notificationTime || '09:00';
-
-    let userLocalHour;
-    try {
-      const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hour12: false });
-      let formattedHour = formatter.format(new Date());
-      if (formattedHour === '24') formattedHour = '00';
-      userLocalHour = formattedHour + ':00';
-    } catch (e) {
-      userLocalHour = new Date().getUTCHours().toString().padStart(2, '0') + ':00';
-    }
-
-    if (userLocalHour !== notifTime) continue;
-
-    let userTodayISO;
-    let userYesterdayISO;
-    try {
-      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
-      const y = parts.find(p => p.type === 'year').value;
-      const m = parts.find(p => p.type === 'month').value;
-      const d = parts.find(p => p.type === 'day').value;
-      userTodayISO = `${y}-${m}-${d}`;
-
-      const partsY = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(Date.now() - 86400000));
-      const yY = partsY.find(p => p.type === 'year').value;
-      const mY = partsY.find(p => p.type === 'month').value;
-      const dY = partsY.find(p => p.type === 'day').value;
-      userYesterdayISO = `${yY}-${mY}-${dY}`;
-    } catch(e) {
-      userTodayISO = getTodayISO();
-      userYesterdayISO = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    }
-
-    const assignmentsTodaySnap = await db.collection('assignments')
-      .where('assignedTo', '==', userId)
-      .where('date', '==', userTodayISO)
-      .where('status', '==', 'pending')
-      .get();
-
-    if (!assignmentsTodaySnap.empty) {
-      const titles = assignmentsTodaySnap.docs.map((d) => d.data().title).slice(0, 5).join(', ');
-      const ref = db.collection('notifications').doc();
-      batch.set(ref, {
-        userId, groupId, isRead: false,
-        type: 'daily_summary',
-        title: '📋 Today\'s Tasks',
-        body: `You have ${assignmentsTodaySnap.size} task(s) pending: ${titles}${assignmentsTodaySnap.size > 5 ? '…' : '.'}`,
-        createdAt: Timestamp.now(),
-      });
-    }
-
-    const assignmentsYesterdaySnap = await db.collection('assignments')
-      .where('assignedTo', '==', userId)
-      .where('date', '==', userYesterdayISO)
-      .get();
-
-    const missedYesterday = assignmentsYesterdaySnap.docs
-      .map(doc => doc.data())
-      .filter(a => a.status !== 'done');
-
-    if (missedYesterday.length > 0) {
-      const titles = missedYesterday.map(a => a.title).slice(0, 3).join(', ');
-      const ref = db.collection('notifications').doc();
-      batch.set(ref, {
-        userId, groupId, isRead: false,
-        type: 'missed_task',
-        title: '🕰️ Yesterday\'s Missed Tasks',
-        body: `You didn't complete ${missedYesterday.length} task(s) yesterday (${titles}${missedYesterday.length > 3 ? '…' : ''}). Please remember that consistency helps the whole family! Try to catch up today if you can.`,
-        createdAt: Timestamp.now(),
-      });
-    }
-  }
-
-  await batch.commit();
-});
-
-// ─── CRON 4: Weekly report — missed tasks ─────────────────────────────────
-exports.weeklyMissedReport = onSchedule('0 * * * *', async () => {
-  const usersSnap = await db.collection('users').where('type', '==', 'Adult').get();
-  if (usersSnap.empty) return;
-
-  const batch = db.batch();
-  const groupReportsCache = {};
-  const lastWeekStart = getMondayISO(new Date(Date.now() - 7 * 86400000));
-
-  for (const userDoc of usersSnap.docs) {
-    const data = userDoc.data();
-    const userId = userDoc.id;
-    const groupId = data.groupId;
-    if (!groupId) continue;
-
-    const tz = data.timezone || 'UTC';
-    const notifTime = data.notificationTime || '09:00';
-
-    let userLocalHour;
-    let userLocalDay;
-    try {
-      const timeFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hour12: false });
-      let formattedHour = timeFormatter.format(new Date());
-      if (formattedHour === '24') formattedHour = '00';
-      userLocalHour = formattedHour + ':00';
-
-      const weekdayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' });
-      userLocalDay = weekdayFormatter.format(new Date()); // 'Mon', 'Tue', etc.
-    } catch (e) {
-      userLocalHour = new Date().getUTCHours().toString().padStart(2, '0') + ':00';
-      userLocalDay = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short' }).format(new Date());
-    }
-
-    if (userLocalDay !== 'Mon' || userLocalHour !== notifTime) continue;
-
-    if (groupReportsCache[groupId] === undefined) {
-      const skippedSnap = await db.collection('assignments')
-        .where('groupId', '==', groupId)
-        .where('weekStart', '==', lastWeekStart)
-        .where('status', '==', 'skipped')
-        .get();
-
-      if (skippedSnap.empty) {
-        groupReportsCache[groupId] = null;
-      } else {
-        const skippedByUser = {};
-        skippedSnap.docs.forEach((d) => {
-          const uid = d.data().assignedTo;
-          if (!skippedByUser[uid]) skippedByUser[uid] = [];
-          skippedByUser[uid].push(d.data().title);
-        });
-
-        if (Object.keys(skippedByUser).length === 0) {
-          groupReportsCache[groupId] = null;
-        } else {
-          const groupUsersSnap = await db.collection('users').where('groupId', '==', groupId).get();
-          const userNames = {};
-          groupUsersSnap.docs.forEach((d) => { userNames[d.id] = d.data().name; });
-
-          const reportLines = Object.entries(skippedByUser).map(
-            ([uid, titles]) => `${userNames[uid] ?? uid}: ${titles.join(', ')}`
-          );
-
-          groupReportsCache[groupId] = `Last week some tasks were skipped:\n${reportLines.join('\n')}\n\nTip: Consider reducing task complexity or adjusting capacity for members who frequently skip.`;
-        }
-      }
-    }
-
-    const body = groupReportsCache[groupId];
-    if (body) {
-      const ref = db.collection('notifications').doc();
-      batch.set(ref, {
-        userId, groupId, isRead: false,
-        type: 'weekly_report',
-        title: '📊 Weekly Missed Tasks Report',
-        body,
-        createdAt: Timestamp.now(),
-      });
-    }
-  }
-
-  await batch.commit();
 });
