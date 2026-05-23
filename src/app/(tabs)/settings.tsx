@@ -4,7 +4,7 @@ import {
   Alert, Switch, ActivityIndicator,
 } from 'react-native';
 import {
-  collection, doc, updateDoc, addDoc, getDoc, serverTimestamp, Timestamp,
+  doc, updateDoc, getDoc, Timestamp,
 } from 'firebase/firestore';
 import * as Clipboard from 'expo-clipboard';
 import { db } from '../../lib/firebase';

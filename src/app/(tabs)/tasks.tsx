@@ -16,7 +16,7 @@ import { Task, UserType, User, Assignment } from '../../types';
 import { syncLocalNotifications } from '../../lib/notifications';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { getTypeColor } from '../../utils/colors';
-import { USER_TYPES, DAYS_OF_WEEK, ALL_WEEK_DAYS, FIRESTORE_COLLECTIONS } from '../../constants/domain';
+import { USER_TYPES, DAYS_OF_WEEK, ALL_WEEK_DAYS } from '../../constants/domain';
 import { autoDistributeTasks } from '../../lib/distribution';
 import { getMondayISO } from '../../utils/date';
 
@@ -243,7 +243,6 @@ export default function TasksScreen() {
         (d) => ({ id: d.id, ...d.data() } as Assignment)
       );
 
-      const todayDateISO = new Date().toISOString().split('T')[0];
       const todayDayIndex = new Date().getDay();
       const getWeekDayOrderIndex = (idx: number) => (idx === 0 ? 6 : idx - 1);
       const todayOrder = getWeekDayOrderIndex(todayDayIndex);

@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { darkColors, lightColors, ThemeColors } from '../constants/colors';
-import { Appearance } from 'react-native';
+
 
 export type ThemeType = 'light' | 'dark';
 

@@ -115,11 +115,32 @@ export default function StatsScreen() {
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   }, []);
 
-  const filteredAssignments = useMemo(() => {
+  const groupedAssignments = useMemo(() => {
     if (!detailUser || !detailStatus) return [];
-    return allAssignments
-      .filter((a) => a.assignedTo === detailUser.id && a.status === detailStatus)
-      .sort((a, b) => b.date.localeCompare(a.date));
+    
+    const filtered = allAssignments.filter(
+      (a) => a.assignedTo === detailUser.id && a.status === detailStatus
+    );
+
+    filtered.sort((a, b) => {
+      if (detailStatus === 'pending') {
+        return a.date.localeCompare(b.date);
+      } else {
+        return b.date.localeCompare(a.date);
+      }
+    });
+
+    const groups: { date: string; list: any[] }[] = [];
+    filtered.forEach((a) => {
+      let group = groups.find((g) => g.date === a.date);
+      if (!group) {
+        group = { date: a.date, list: [] };
+        groups.push(group);
+      }
+      group.list.push(a);
+    });
+
+    return groups;
   }, [allAssignments, detailUser, detailStatus]);
 
   const weekLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Last Week' : `${weekOffset} Weeks Ago`;
@@ -160,7 +181,7 @@ export default function StatsScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
-        {stats.map((s, idx) => {
+        {stats.map((s) => {
           const total = s.done + s.skipped + s.pending;
           const completionPct = total > 0 ? Math.round((s.done / total) * 100) : 0;
           const isMe = s.userId === user?.id;
@@ -269,7 +290,7 @@ export default function StatsScreen() {
           </View>
 
           <ScrollView contentContainerStyle={styles.modalList}>
-            {filteredAssignments.length === 0 ? (
+            {groupedAssignments.length === 0 ? (
               <View style={styles.modalEmpty}>
                 <Ionicons
                   name={detailStatus === 'done' ? 'checkbox-outline' : detailStatus === 'skipped' ? 'close-circle-outline' : 'time-outline'}
@@ -280,15 +301,21 @@ export default function StatsScreen() {
                 <Text style={styles.modalEmptyText}>No tasks found</Text>
               </View>
             ) : (
-              filteredAssignments.map((a) => (
-                <View key={a.id} style={styles.modalCard}>
-                  <View style={styles.modalCardHeader}>
-                    <Text style={styles.modalCardTitle}>{a.title}</Text>
-                    <Text style={styles.modalCardPoints}>{a.complexity} pts</Text>
+              groupedAssignments.map((g) => (
+                <View key={g.date} style={styles.groupContainer}>
+                  <View style={styles.dateHeaderContainer}>
+                    <Ionicons name="calendar-outline" size={14} color={Colors.primary} />
+                    <Text style={styles.dateHeaderText}>{formatAssignmentDate(g.date)}</Text>
                   </View>
-                  <View style={styles.modalCardFooter}>
-                    <Ionicons name="calendar-outline" size={14} color={Colors.textSecondary} />
-                    <Text style={styles.modalCardDate}>{formatAssignmentDate(a.date)}</Text>
+                  <View style={styles.groupList}>
+                    {g.list.map((a) => (
+                      <View key={a.id} style={styles.modalCard}>
+                        <View style={styles.modalCardHeader}>
+                          <Text style={styles.modalCardTitle}>{a.title}</Text>
+                          <Text style={styles.modalCardPoints}>{a.complexity} pts</Text>
+                        </View>
+                      </View>
+                    ))}
                   </View>
                 </View>
               ))
@@ -359,16 +386,29 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
     width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bgInput,
     justifyContent: 'center', alignItems: 'center',
   },
-  modalList: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 60 },
+  modalList: { padding: Spacing.lg, paddingBottom: 60 },
+  groupContainer: { marginBottom: Spacing.md },
+  dateHeaderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+    paddingHorizontal: 4,
+  },
+  dateHeaderText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  groupList: { gap: Spacing.sm },
   modalCard: {
     backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md,
     borderWidth: 1, borderColor: Colors.border,
   },
-  modalCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  modalCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalCardTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary, flex: 1, marginRight: Spacing.sm },
   modalCardPoints: { fontSize: 13, fontWeight: '600', color: 'rgb(255, 179, 71)' },
-  modalCardFooter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  modalCardDate: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
   modalEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
   modalEmptyText: { fontSize: 15, color: Colors.textMuted, fontWeight: '500' },
 });

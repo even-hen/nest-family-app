@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Modal, TextInput, Alert, ActivityIndicator, Switch, RefreshControl,
+  Modal, TextInput, Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import {
-  collection, query, where, getDocs, doc, updateDoc, deleteDoc,
+  collection, query, where, getDocs, doc, updateDoc,
 } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
 import { db } from '../../lib/firebase';

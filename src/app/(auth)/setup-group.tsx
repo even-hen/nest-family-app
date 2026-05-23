@@ -111,7 +111,6 @@ export default function SetupGroupScreen() {
       // Find group with this invite token
       const groupsSnap = await getDocs(collection(db, 'groups'));
       let foundGroupId: string | null = null;
-      let foundLink: any = null;
 
       for (const groupDoc of groupsSnap.docs) {
         const data = groupDoc.data();
@@ -125,7 +124,6 @@ export default function SetupGroupScreen() {
             return;
           }
           foundGroupId = groupDoc.id;
-          foundLink = link;
           break;
         }
       }

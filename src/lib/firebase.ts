@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 // @ts-ignore - getReactNativePersistence is missing from default TS definitions but exists in the RN bundle
 import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 

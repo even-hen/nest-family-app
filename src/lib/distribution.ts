@@ -1,4 +1,4 @@
-import { Task, User, UserType } from '../types';
+import { Task, UserType } from '../types';
 
 /**
  * Calculates the weekly resource cost of a task.
