@@ -140,6 +140,11 @@ export default function StatsScreen() {
       group.list.push(a);
     });
 
+    // Sort tasks in each day by complexity (points) ascending
+    groups.forEach((g) => {
+      g.list.sort((a, b) => a.complexity - b.complexity);
+    });
+
     return groups;
   }, [allAssignments, detailUser, detailStatus]);
 
