@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
+  PanResponder,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,6 +16,12 @@ const USER_TYPES: { label: string; value: UserType; emoji: string; desc: string 
   { label: 'Child', value: 'Child', emoji: '🧒', desc: 'Can view & complete tasks' },
 ];
 
+const getCapacityColor = (val: number, Colors: ThemeColors) => {
+  if (val <= 30) return Colors.accent;
+  if (val <= 70) return Colors.success;
+  return Colors.primary;
+};
+
 export default function RegisterScreen() {
   const { Colors } = useAppTheme();
   const styles = getStyles(Colors);
@@ -25,6 +32,31 @@ export default function RegisterScreen() {
   const [type, setType] = useState<UserType>('Adult');
   const [resource, setResource] = useState(100);
   const [loading, setLoading] = useState(false);
+
+  const [sliderWidth, setSliderWidth] = useState(200);
+  const resourceRef = React.useRef(resource);
+  React.useEffect(() => {
+    resourceRef.current = resource;
+  }, [resource]);
+  const startValRef = React.useRef(resource);
+
+  const panResponder = React.useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (evt) => {
+      const initialX = evt.nativeEvent.locationX;
+      const initialVal = Math.max(0, Math.min(100, Math.round((initialX / sliderWidth) * 10) * 10));
+      setResource(initialVal);
+      startValRef.current = initialVal;
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const deltaPercent = (gestureState.dx / sliderWidth) * 100;
+      const rawVal = startValRef.current + deltaPercent;
+      const steppedVal = Math.max(0, Math.min(100, Math.round(rawVal / 10) * 10));
+      setResource(steppedVal);
+    },
+    onPanResponderRelease: () => {}
+  }), [sliderWidth]);
 
   const handleRegister = async () => {
     if (!email.trim() || !password.trim() || !name.trim()) {
@@ -119,53 +151,25 @@ export default function RegisterScreen() {
           {/* Resource slider */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
-              My capacity: <Text style={styles.accent}>{resource}</Text>
+              My capacity: <Text style={[styles.accent, { color: getCapacityColor(resource, Colors) }]}>{resource}</Text>
             </Text>
             <Text style={styles.hint}>
               How much of the household workload can you handle?
             </Text>
             <View style={styles.sliderContainer}>
-              <TouchableOpacity
-                style={styles.adjustBtn}
-                onPress={() => setResource(Math.max(0, resource - 10))}
-                activeOpacity={0.7}
+              <View 
+                style={styles.trackWrapper}
+                onLayout={(e) => setSliderWidth(e.nativeEvent.layout.width)}
+                {...panResponder.panHandlers}
               >
-                <Text style={styles.adjustBtnText}>−</Text>
-              </TouchableOpacity>
-
-              <View style={styles.trackWrapper}>
                 <View style={styles.trackBg} />
-                <View style={[styles.trackFill, { width: `${resource}%` }]} />
+                <View style={[styles.trackFill, { width: `${resource}%`, backgroundColor: getCapacityColor(resource, Colors) }]} />
                 
-                <View style={styles.ticksContainer}>
-                  {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((val) => {
-                    const isActive = val <= resource;
-                    const isThumb = val === resource;
-                    return (
-                      <TouchableOpacity
-                        key={val}
-                        style={styles.tickTouchArea}
-                        onPress={() => setResource(val)}
-                        activeOpacity={1}
-                      >
-                        <View style={[
-                          styles.tickDot,
-                          isActive && styles.tickDotActive,
-                          isThumb && styles.tickThumb
-                        ]} />
-                      </TouchableOpacity>
-                    );
-                  })}
+                {/* Single Thumb Indicator */}
+                <View style={[styles.thumbContainer, { left: `${resource}%` }]} pointerEvents="none">
+                  <View style={[styles.sliderThumb, { borderColor: getCapacityColor(resource, Colors), shadowColor: getCapacityColor(resource, Colors) }]} />
                 </View>
               </View>
-
-              <TouchableOpacity
-                style={styles.adjustBtn}
-                onPress={() => setResource(Math.min(100, resource + 10))}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.adjustBtnText}>+</Text>
-              </TouchableOpacity>
             </View>
           </View>
 
@@ -223,32 +227,12 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   typeDesc: { fontSize: 10, color: Colors.textMuted, textAlign: 'center', marginTop: 2 },
   hint: { fontSize: 12, color: Colors.textMuted, marginBottom: Spacing.sm },
   sliderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginTop: Spacing.sm,
     marginBottom: Spacing.md,
   },
-  adjustBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.bgInput,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  adjustBtnText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
   trackWrapper: {
-    flex: 1,
     height: 40,
     justifyContent: 'center',
-    marginHorizontal: Spacing.sm,
     position: 'relative',
   },
   trackBg: {
@@ -259,47 +243,33 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   trackFill: {
     height: 6,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#009688',
     borderRadius: 3,
     position: 'absolute',
     left: 0,
   },
-  ticksContainer: {
+  thumbContainer: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  tickTouchArea: {
-    width: 24,
-    height: 40,
+    top: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    width: 24,
+    marginLeft: -12,
   },
-  tickDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.border,
-  },
-  tickDotActive: {
-    backgroundColor: Colors.primary,
-  },
-  tickThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+  sliderThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#fff',
     borderWidth: 4,
-    borderColor: Colors.primary,
-    shadowColor: Colors.primary,
+    borderColor: '#009688',
+    shadowColor: '#009688',
     shadowOpacity: 0.5,
     shadowRadius: 6,
     elevation: 4,
   },
-  accent: { color: Colors.primary },
+  accent: { color: '#009688' },
   btn: {
     backgroundColor: Colors.primary, borderRadius: Radius.md,
     padding: Spacing.md, alignItems: 'center', marginTop: Spacing.sm,

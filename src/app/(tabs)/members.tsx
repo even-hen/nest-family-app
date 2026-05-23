@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Modal, TextInput, Alert, ActivityIndicator, RefreshControl,
+  PanResponder,
 } from 'react-native';
 import {
   collection, query, where, getDocs, doc, updateDoc,
@@ -15,6 +16,12 @@ import { useAppTheme } from '../../contexts/ThemeContext';
 import { getTypeColor } from '../../utils/colors';
 import { USER_TYPES, FIRESTORE_COLLECTIONS } from '../../constants/domain';
 
+const getCapacityColor = (val: number, Colors: ThemeColors) => {
+  if (val <= 30) return Colors.accent;
+  if (val <= 70) return Colors.success;
+  return Colors.primary;
+};
+
 export default function MembersScreen() {
   const { Colors } = useAppTheme();
   const styles = useMemo(() => getStyles(Colors), [Colors]);
@@ -26,6 +33,31 @@ export default function MembersScreen() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState({ name: '', resource: 100, type: 'Adult' as UserType });
   const [saving, setSaving] = useState(false);
+
+  const [sliderWidth, setSliderWidth] = useState(200);
+  const resourceRef = React.useRef(form.resource);
+  React.useEffect(() => {
+    resourceRef.current = form.resource;
+  }, [form.resource]);
+  const startValRef = React.useRef(form.resource);
+
+  const panResponder = React.useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (evt) => {
+      const initialX = evt.nativeEvent.locationX;
+      const initialVal = Math.max(0, Math.min(100, Math.round((initialX / sliderWidth) * 10) * 10));
+      setForm((p) => ({ ...p, resource: initialVal }));
+      startValRef.current = initialVal;
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const deltaPercent = (gestureState.dx / sliderWidth) * 100;
+      const rawVal = startValRef.current + deltaPercent;
+      const steppedVal = Math.max(0, Math.min(100, Math.round(rawVal / 10) * 10));
+      setForm((p) => ({ ...p, resource: steppedVal }));
+    },
+    onPanResponderRelease: () => {}
+  }), [sliderWidth]);
 
   const isAdult = currentUser?.type === 'Adult';
 
@@ -200,49 +232,21 @@ export default function MembersScreen() {
               </>
             )}
 
-            <Text style={styles.label}>Capacity: <Text style={{ color: Colors.primary }}>{form.resource}</Text></Text>
+            <Text style={styles.label}>Capacity: <Text style={{ color: getCapacityColor(form.resource, Colors) }}>{form.resource}</Text></Text>
             <View style={styles.sliderContainer}>
-              <TouchableOpacity
-                style={styles.adjustBtn}
-                onPress={() => setForm((p) => ({ ...p, resource: Math.max(0, p.resource - 10) }))}
-                activeOpacity={0.7}
+              <View 
+                style={styles.trackWrapper}
+                onLayout={(e) => setSliderWidth(e.nativeEvent.layout.width)}
+                {...panResponder.panHandlers}
               >
-                <Text style={styles.adjustBtnText}>−</Text>
-              </TouchableOpacity>
-
-              <View style={styles.trackWrapper}>
                 <View style={styles.trackBg} />
-                <View style={[styles.trackFill, { width: `${form.resource}%` }]} />
+                <View style={[styles.trackFill, { width: `${form.resource}%`, backgroundColor: getCapacityColor(form.resource, Colors) }]} />
                 
-                <View style={styles.ticksContainer}>
-                  {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((val) => {
-                    const isActive = val <= form.resource;
-                    const isThumb = val === form.resource;
-                    return (
-                      <TouchableOpacity
-                        key={val}
-                        style={styles.tickTouchArea}
-                        onPress={() => setForm((p) => ({ ...p, resource: val }))}
-                        activeOpacity={1}
-                      >
-                        <View style={[
-                          styles.tickDot,
-                          isActive && styles.tickDotActive,
-                          isThumb && styles.tickThumb
-                        ]} />
-                      </TouchableOpacity>
-                    );
-                  })}
+                {/* Single Thumb Indicator */}
+                <View style={[styles.thumbContainer, { left: `${form.resource}%` }]} pointerEvents="none">
+                  <View style={[styles.sliderThumb, { borderColor: getCapacityColor(form.resource, Colors), shadowColor: getCapacityColor(form.resource, Colors) }]} />
                 </View>
               </View>
-
-              <TouchableOpacity
-                style={styles.adjustBtn}
-                onPress={() => setForm((p) => ({ ...p, resource: Math.min(100, p.resource + 10) }))}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.adjustBtnText}>+</Text>
-              </TouchableOpacity>
             </View>
 
             <TouchableOpacity style={[styles.saveBtn, saving && styles.btnDisabled]} onPress={handleSave} disabled={saving}>
@@ -323,32 +327,12 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   typeBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
   sliderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     marginTop: Spacing.sm,
     marginBottom: Spacing.md,
   },
-  adjustBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.bgInput,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  adjustBtnText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
   trackWrapper: {
-    flex: 1,
     height: 40,
     justifyContent: 'center',
-    marginHorizontal: Spacing.sm,
     position: 'relative',
   },
   trackBg: {
@@ -359,42 +343,28 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   trackFill: {
     height: 6,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#009688',
     borderRadius: 3,
     position: 'absolute',
     left: 0,
   },
-  ticksContainer: {
+  thumbContainer: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  tickTouchArea: {
-    width: 24,
-    height: 40,
+    top: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    width: 24,
+    marginLeft: -12,
   },
-  tickDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.border,
-  },
-  tickDotActive: {
-    backgroundColor: Colors.primary,
-  },
-  tickThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+  sliderThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: '#fff',
     borderWidth: 4,
-    borderColor: Colors.primary,
-    shadowColor: Colors.primary,
+    borderColor: '#009688',
+    shadowColor: '#009688',
     shadowOpacity: 0.5,
     shadowRadius: 6,
     elevation: 4,
