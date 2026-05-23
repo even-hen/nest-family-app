@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   RefreshControl, ActivityIndicator, Alert,
 } from 'react-native';
 import { collection, query, where, getDocs, doc, updateDoc, Timestamp, writeBatch } from 'firebase/firestore';
+import { useFocusEffect } from 'expo-router';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
@@ -154,7 +155,11 @@ export default function AssignmentsScreen() {
     }
   }, [user?.groupId]);
 
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData().finally(() => setLoading(false));
+    }, [loadData])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);

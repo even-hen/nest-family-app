@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Modal, TextInput, Alert, ActivityIndicator, Switch, RefreshControl, Platform,
@@ -7,6 +7,7 @@ import {
   collection, query, where, getDocs, addDoc, updateDoc, deleteDoc,
   doc, serverTimestamp, writeBatch,
 } from 'firebase/firestore';
+import { useFocusEffect } from 'expo-router';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -142,7 +143,11 @@ export default function TasksScreen() {
     setTasks(loadedTasks);
   }, [user?.groupId]);
 
-  useEffect(() => { loadData().finally(() => setLoading(false)); }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData().finally(() => setLoading(false));
+    }, [loadData])
+  );
 
   const onRefresh = async () => { setRefreshing(true); await loadData(); setRefreshing(false); };
 

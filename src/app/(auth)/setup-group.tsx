@@ -208,7 +208,7 @@ export default function SetupGroupScreen() {
               />
             </View>
             <Text style={styles.hint}>
-              🎉 We'll add 8 common household tasks to get you started!
+              🎉 We'll add common household tasks to get you started!
             </Text>
             <TouchableOpacity
               style={[styles.btn, loading && styles.btnDisabled]}
