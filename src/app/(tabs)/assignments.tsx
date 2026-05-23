@@ -211,7 +211,7 @@ export default function AssignmentsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.greeting}>Today's Assignments</Text>
+          <Text style={styles.greeting}>{"Today's Assignments"}</Text>
           <Text style={styles.date}>{dateLabel}</Text>
         </View>
         <View style={styles.toggleContainer}>

@@ -44,7 +44,7 @@ export default function NotificationsScreen() {
 
   const loadNotifications = useCallback(async () => {
     if (!user?.id || !user.groupId) return;
-    
+
     try {
       const todayISO = getTodayISO();
       const yesterdayISO = getYesterdayISO();
@@ -135,7 +135,7 @@ export default function NotificationsScreen() {
         );
 
         const skippedTasks = skippedSnap.docs.map((doc) => doc.data() as Assignment);
-        
+
         if (skippedTasks.length > 0) {
           const skippedByUser: Record<string, string[]> = {};
           skippedTasks.forEach((t) => {

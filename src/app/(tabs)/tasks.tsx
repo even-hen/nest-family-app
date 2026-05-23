@@ -556,7 +556,7 @@ export default function TasksScreen() {
         {tasks.length === 0 && (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No tasks yet</Text>
-            {isAdult && <Text style={styles.emptyDesc}>Tap "+ Add Task" to create your first task</Text>}
+            {isAdult && <Text style={styles.emptyDesc}>{"Tap \"+ Add Task\" to create your first task"}</Text>}
           </View>
         )}
         {tasks.map((t) => (
