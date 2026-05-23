@@ -1,17 +1,21 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl,
-} from 'react-native';
-import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { db } from '../../lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator, RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { useAuth } from '../../contexts/AuthContext';
-import { Spacing, Radius, ThemeColors } from '../../constants/colors';
-import { Notification, Assignment } from '../../types';
 import { useAppTheme } from '../../contexts/ThemeContext';
-import { getTodayISO, getYesterdayISO, getMondayISO } from '../../utils/date';
+import { db } from '../../lib/firebase';
+import { Assignment, Notification } from '../../types';
+import { getMondayISO, getTodayISO, getYesterdayISO } from '../../utils/date';
 
 const TYPE_ICONS: Record<string, string> = {
   daily_summary: 'clipboard-outline',
@@ -23,7 +27,7 @@ const TYPE_ICONS: Record<string, string> = {
 export default function NotificationsScreen() {
   const { Colors } = useAppTheme();
   const styles = getStyles(Colors);
-  const { user } = useAuth();
+  const { user, setUnreadCount } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [readIds, setReadIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,8 +54,8 @@ export default function NotificationsScreen() {
       const yesterdayISO = getYesterdayISO();
       const lastWeekStart = getMondayISO(new Date(Date.now() - 7 * 86400000));
 
-      // Fetch user assignments and group users
-      const [assignmentsSnap, groupUsersSnap] = await Promise.all([
+      // Fetch user assignments, group users, and persisted notifications from Firestore
+      const [assignmentsSnap, groupUsersSnap, dbNotifsSnap] = await Promise.all([
         getDocs(
           query(
             collection(db, 'assignments'),
@@ -64,6 +68,12 @@ export default function NotificationsScreen() {
             where('groupId', '==', user.groupId)
           )
         ),
+        getDocs(
+          query(
+            collection(db, 'notifications'),
+            where('userId', '==', user.id)
+          )
+        ),
       ]);
 
       const userAssignments = assignmentsSnap.docs.map(
@@ -74,6 +84,22 @@ export default function NotificationsScreen() {
       groupUsersSnap.docs.forEach((doc) => {
         userNames[doc.id] = doc.data().name;
       });
+
+      // Calculate exact scheduled publication timestamps based on user's preferred notificationTime
+      const [hourStr, minuteStr] = (user.notificationTime || '09:00').split(':');
+      const targetHour = parseInt(hourStr, 10) || 9;
+      const targetMinute = parseInt(minuteStr, 10) || 0;
+
+      const getPublishTimeForDate = (baseDate: Date) => {
+        const d = new Date(baseDate);
+        d.setHours(targetHour, targetMinute, 0, 0);
+        return d.getTime() > Date.now() ? new Date() : d;
+      };
+
+      const parseLocalDateString = (isoStr: string): Date => {
+        const [year, month, day] = isoStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
+      };
 
       const generatedNotifs: Notification[] = [];
 
@@ -96,7 +122,7 @@ export default function NotificationsScreen() {
           type: 'missed_task',
           title: `🕰️ Yesterday's Missed Tasks (${yesterdayMissed.length})`,
           body: `You didn't complete your tasks yesterday:\n${taskBullets}${truncationSuffix}\n\nPlease remember that consistency helps the whole family! Try to catch up today if you can.`,
-          createdAt: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
+          createdAt: getPublishTimeForDate(new Date()),
         });
       }
 
@@ -119,7 +145,7 @@ export default function NotificationsScreen() {
           type: 'daily_summary',
           title: `📋 Today's Tasks (${todayPending.length})`,
           body: `You have ${todayPending.length} task(s) pending today:\n${taskBullets}${truncationSuffix}`,
-          createdAt: new Date(), // Just now
+          createdAt: new Date(getPublishTimeForDate(new Date()).getTime() + 1000), // Slightly offset from missed tasks
         });
       }
 
@@ -151,6 +177,9 @@ export default function NotificationsScreen() {
               .map(([uid, titles]) => `• ${userNames[uid] ?? uid}: ${titles.join(', ')}`)
               .join('\n');
 
+            const currentWeekMondayStr = getMondayISO(new Date());
+            const currentWeekMonday = parseLocalDateString(currentWeekMondayStr);
+
             generatedNotifs.push({
               id: `weekly_report_${lastWeekStart}`,
               userId: user.id,
@@ -159,14 +188,33 @@ export default function NotificationsScreen() {
               type: 'weekly_report',
               title: '📊 Weekly Missed Tasks Report',
               body: `Last week some tasks were skipped:\n${reportLines}\n\nTip: Consider reducing task complexity or adjusting capacity for members who frequently skip.`,
-              createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+              createdAt: getPublishTimeForDate(currentWeekMonday),
             });
           }
         }
       }
 
+      // Map and merge Firestore notifications (e.g. unassigned_tasks)
+      const firestoreNotifs: Notification[] = dbNotifsSnap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          userId: data.userId,
+          groupId: data.groupId,
+          isRead: data.isRead || false,
+          type: data.type,
+          title: data.title,
+          body: data.body,
+          createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
+        } as Notification;
+      });
+
+      const allNotifications = [...generatedNotifs, ...firestoreNotifs];
+
       // Sort newest first
-      setNotifications(generatedNotifs);
+      allNotifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+      setNotifications(allNotifications);
     } catch (e) {
       console.error('Error fetching/generating notifications:', e);
     }
@@ -213,6 +261,10 @@ export default function NotificationsScreen() {
   };
 
   const unreadCount = notifications.filter((n) => !readIds.includes(n.id)).length;
+
+  useEffect(() => {
+    setUnreadCount(unreadCount);
+  }, [unreadCount, setUnreadCount]);
 
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;

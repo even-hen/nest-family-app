@@ -1,18 +1,23 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  RefreshControl, ActivityIndicator, Alert,
-} from 'react-native';
-import { collection, query, where, getDocs, doc, updateDoc, Timestamp, writeBatch } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
-import { db } from '../../lib/firebase';
-import { useAuth } from '../../contexts/AuthContext';
-import { Spacing, Radius, ThemeColors } from '../../constants/colors';
-import { Assignment, AssignmentStatus } from '../../types';
-import { useAppTheme } from '../../contexts/ThemeContext';
-import { formatDate, getTodayISO, getYesterdayISO } from '../../utils/date';
+import { collection, doc, getDocs, query, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+  ActivityIndicator, Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { FIRESTORE_COLLECTIONS } from '../../constants/domain';
+import { useAuth } from '../../contexts/AuthContext';
+import { useAppTheme } from '../../contexts/ThemeContext';
+import { db } from '../../lib/firebase';
 import { syncLocalNotifications } from '../../lib/notifications';
+import { Assignment, AssignmentStatus } from '../../types';
+import { formatDate, getTodayISO, getYesterdayISO } from '../../utils/date';
 
 const getStatusColor = (status: AssignmentStatus, Colors: ThemeColors): string => {
   if (status === 'pending') return Colors.pending;
@@ -46,7 +51,7 @@ function AssignmentCard({
     <View style={[styles.card, isPending && styles.cardPending]}>
       <View style={styles.cardLeft}>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle}>{assignment.title}</Text>
+          <Text style={[styles.cardTitle, !showAssignee && { marginBottom: 0 }]}>{assignment.title}</Text>
           {showAssignee && (
             <View style={styles.cardMeta}>
               <View style={styles.assigneeBadge}>
@@ -180,7 +185,7 @@ export default function AssignmentsScreen() {
       setAssignments((prev) =>
         prev.map((a) => a.id === id ? { ...a, status: 'done', doneAt: new Date() } : a)
       );
-      
+
       // Update scheduled local notifications on device
       if (user) {
         syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
@@ -334,13 +339,14 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   sectionTitle: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, marginTop: Spacing.md, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   card: {
     backgroundColor: Colors.bgCard, borderRadius: Radius.md,
-    padding: Spacing.md, flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: Spacing.md, paddingVertical: 10, flexDirection: 'row',
+    justifyContent: 'space-between', alignItems: 'center', borderWidth: 1,
+    borderColor: Colors.border,
   },
   cardPending: { borderColor: Colors.border },
   cardLeft: { flexDirection: 'row', flex: 1, gap: Spacing.sm },
   cardInfo: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary, marginBottom: 6 },
+  cardTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary, marginBottom: 6 },
   cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   typeBadge: { backgroundColor: Colors.bgInput, borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: Colors.border },
   cardType: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },
@@ -348,12 +354,12 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   cardAssignee: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },
   cardRight: { gap: 8, marginLeft: Spacing.sm, flexDirection: 'row', alignItems: 'center' },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3 },
-  statusText: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  statusText: { fontSize: 12, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
   doneBtn: {
     backgroundColor: Colors.success, borderRadius: Radius.sm,
     paddingHorizontal: 12, paddingVertical: 6,
   },
-  doneBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
+  doneBtnText: { color: '#fff', fontSize: 12, fontWeight: '500' },
   empty: { alignItems: 'center', paddingVertical: 80 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   emptyDesc: { fontSize: 14, color: Colors.textSecondary, marginTop: 4 },

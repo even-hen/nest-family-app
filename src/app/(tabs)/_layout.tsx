@@ -12,21 +12,28 @@ function TabIcon({
   iconName,
   focused,
   label,
+  badgeCount,
 }: {
   iconName: IconName;
   focused: boolean;
   label: string;
+  badgeCount?: number;
 }) {
   const { Colors } = useAppTheme();
   const styles = getStyles(Colors);
 
   return (
     <View style={styles.tabItem}>
-      <Ionicons
-        name={iconName}
-        size={22}
-        color={focused ? Colors.tabActive : Colors.tabInactive}
-      />
+      <View>
+        <Ionicons
+          name={iconName}
+          size={22}
+          color={focused ? Colors.tabActive : Colors.tabInactive}
+        />
+        {badgeCount !== undefined && badgeCount > 0 && (
+          <View style={styles.badge} />
+        )}
+      </View>
       <Text numberOfLines={1} style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
     </View>
   );
@@ -35,7 +42,7 @@ function TabIcon({
 export default function TabsLayout() {
   const { Colors } = useAppTheme();
   const styles = getStyles(Colors);
-  const { user, loading } = useAuth();
+  const { user, loading, unreadCount } = useAuth();
 
   if (!loading && !user) {
     return <Redirect href="/(auth)/login" />;
@@ -109,6 +116,7 @@ export default function TabsLayout() {
               iconName={focused ? 'notifications' : 'notifications-outline'}
               label="Alerts"
               focused={focused}
+              badgeCount={unreadCount}
             />
           ),
         }}
@@ -141,4 +149,15 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   tabItem: { alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 50 },
   tabLabel: { fontSize: 10, color: Colors.tabInactive, fontWeight: '500' },
   tabLabelActive: { color: Colors.tabActive },
+  badge: {
+    position: 'absolute',
+    right: -4,
+    top: -2,
+    backgroundColor: '#FF3B30', // Standard iOS red
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    borderWidth: 1.5,
+    borderColor: Colors.bgCard, // Match background so it forms a clean cutout
+  },
 });

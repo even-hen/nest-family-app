@@ -1,23 +1,41 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Modal, TextInput, Alert, ActivityIndicator, Switch, RefreshControl, Platform,
-} from 'react-native';
-import {
-  collection, query, where, getDocs, addDoc, updateDoc, deleteDoc,
-  doc, serverTimestamp, writeBatch,
-} from 'firebase/firestore';
-import { useFocusEffect } from 'expo-router';
-import { db } from '../../lib/firebase';
-import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import { Spacing, Radius, ThemeColors } from '../../constants/colors';
-import { Task, UserType, User, Assignment } from '../../types';
-import { syncLocalNotifications } from '../../lib/notifications';
+import { useFocusEffect } from 'expo-router';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
+  writeBatch,
+} from 'firebase/firestore';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Radius, Spacing, ThemeColors } from '../../constants/colors';
+import { ALL_WEEK_DAYS, DAYS_OF_WEEK, USER_TYPES } from '../../constants/domain';
+import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
-import { getTypeColor } from '../../utils/colors';
-import { USER_TYPES, DAYS_OF_WEEK, ALL_WEEK_DAYS } from '../../constants/domain';
 import { autoDistributeTasks } from '../../lib/distribution';
+import { db } from '../../lib/firebase';
+import { syncLocalNotifications } from '../../lib/notifications';
+import { Assignment, Task, User, UserType } from '../../types';
+import { getTypeColor } from '../../utils/colors';
 import { getMondayISO } from '../../utils/date';
 
 function TaskCard({
@@ -104,6 +122,7 @@ export default function TasksScreen() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const isAdult = user?.type === 'Adult';
 
@@ -128,16 +147,22 @@ export default function TasksScreen() {
 
     const loadedTasks = tasksSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
     loadedTasks.sort((a, b) => {
+      // 1. Active tasks at the top, deactivated at the bottom
       if (a.isActive !== b.isActive) {
         return a.isActive ? -1 : 1;
       }
-      const nameA = a.assignedTo ? (nameMap[a.assignedTo] || '').toLowerCase() : '';
-      const nameB = b.assignedTo ? (nameMap[b.assignedTo] || '').toLowerCase() : '';
-      if (nameA !== nameB) {
-        if (nameA === '') return -1;
-        if (nameB === '') return 1;
-        return nameA.localeCompare(nameB);
+
+      // 2. Sort descending by total points (complexity * weekDays count)
+      const aDays = a.weekDays ? a.weekDays.length : 0;
+      const bDays = b.weekDays ? b.weekDays.length : 0;
+      const aPoints = a.complexity * aDays;
+      const bPoints = b.complexity * bDays;
+
+      if (bPoints !== aPoints) {
+        return bPoints - aPoints; // Descending
       }
+
+      // 3. Fallback to title alphabetically
       return a.title.localeCompare(b.title);
     });
     setTasks(loadedTasks);
@@ -145,6 +170,7 @@ export default function TasksScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setSearchQuery('');
       loadData().finally(() => setLoading(false));
     }, [loadData])
   );
@@ -515,6 +541,16 @@ export default function TasksScreen() {
     }
   };
 
+  const filteredTasks = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    return tasks.filter((t) => {
+      const titleMatches = t.title.toLowerCase().includes(query);
+      const assigneeName = t.assignedTo ? (groupUsers[t.assignedTo] || '').toLowerCase() : '';
+      const assigneeMatches = assigneeName.includes(query);
+      return titleMatches || assigneeMatches;
+    });
+  }, [tasks, searchQuery, groupUsers]);
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;
   }
@@ -553,13 +589,34 @@ export default function TasksScreen() {
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
-        {tasks.length === 0 && (
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search-outline" size={18} color={Colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search tasks..."
+              placeholderTextColor={Colors.textMuted}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearBtn} activeOpacity={0.7}>
+                <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {filteredTasks.length === 0 && (
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No tasks yet</Text>
-            {isAdult && <Text style={styles.emptyDesc}>{"Tap \"+ Add Task\" to create your first task"}</Text>}
+            <Text style={styles.emptyTitle}>
+              {searchQuery ? 'No matching tasks' : 'No tasks yet'}
+            </Text>
+            {isAdult && !searchQuery && <Text style={styles.emptyDesc}>{"Tap \"+ Add Task\" to create your first task"}</Text>}
           </View>
         )}
-        {tasks.map((t) => (
+        {filteredTasks.map((t) => (
           <TaskCard key={t.id} task={t} users={groupUsers} onEdit={openEdit} canEdit={isAdult} />
         ))}
       </ScrollView>
@@ -687,7 +744,12 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
   },
   addBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
-  list: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 100 },
+  list: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+    paddingBottom: 100,
+    gap: Spacing.sm,
+  },
   card: {
     backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md,
     borderWidth: 1, borderColor: Colors.border,
@@ -719,7 +781,7 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   dayChipActive: { backgroundColor: 'transparent', borderWidth: 0 },
   dayText: { fontSize: 13, color: Colors.textMuted, fontWeight: '500' },
-  dayTextActive: { color: Colors.primary, fontWeight: '700' },
+  dayTextActive: { color: Colors.primary, fontWeight: '600' },
   availRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   chipsGroup: { flexDirection: 'row', gap: 6 },
   typePill: { borderRadius: Radius.sm, paddingHorizontal: 10, paddingVertical: 3 },
@@ -775,4 +837,36 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
     padding: Spacing.md, alignItems: 'center', justifyContent: 'center', marginTop: 12,
   },
   deleteBtnText: { color: Colors.accent, fontSize: 15, fontWeight: '600' },
+  searchContainer: {
+    width: '100%',
+    backgroundColor: 'transparent',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 16,
+    height: 38,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: Colors.textPrimary,
+    fontSize: 14,
+    height: '100%',
+    padding: 0,
+  },
+  clearBtn: {
+    padding: 4,
+  },
 });
