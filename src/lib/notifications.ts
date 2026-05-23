@@ -20,15 +20,15 @@ Notifications.setNotificationHandler({
 /** Requests local notification permissions if not already granted. */
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
-  
+
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
-  
+
   if (existingStatus !== 'granted') {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
-  
+
   return finalStatus === 'granted';
 }
 
@@ -97,13 +97,16 @@ export async function syncLocalNotifications(
 
         // Ensure trigger date is in the future
         if (triggerDate.getTime() > Date.now()) {
-          const taskTitles = todaysTasks.map((t) => t.title).slice(0, 5).join(', ');
-          const truncationSuffix = todaysTasks.length > 5 ? '…' : '.';
-          
+          const taskBullets = todaysTasks
+            .slice(0, 5)
+            .map((t) => `• ${t.title}`)
+            .join('\n');
+          const truncationSuffix = todaysTasks.length > 5 ? `\n• and ${todaysTasks.length - 5} more…` : '';
+
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: "📋 Today's Tasks",
-              body: `You have ${todaysTasks.length} task(s) pending today: ${taskTitles}${truncationSuffix}`,
+              title: `📋 Today's Tasks (${todaysTasks.length})`,
+              body: `You have ${todaysTasks.length} task(s) pending today:\n${taskBullets}${truncationSuffix}`,
               data: { type: 'daily_summary' },
             },
             trigger: {
@@ -155,7 +158,7 @@ export async function syncLocalNotifications(
         });
 
         const reportLines = Object.entries(skippedByUser)
-          .map(([uid, titles]) => `${userNames[uid] ?? 'Unknown'}: ${titles.slice(0, 3).join(', ')}${titles.length > 3 ? '…' : ''}`)
+          .map(([uid, titles]) => `• ${userNames[uid] ?? 'Unknown'}: ${titles.slice(0, 3).join(', ')}${titles.length > 3 ? '…' : ''}`)
           .join('\n');
 
         const reportBody = `Last week some tasks were skipped:\n${reportLines}\n\nTip: Consider reducing task complexity or adjusting capacity for members who frequently skip.`;
@@ -182,7 +185,7 @@ export async function syncLocalNotifications(
         }
       }
     }
-    
+
     console.log('[Notifications] Local notifications sync completed successfully.');
   } catch (error) {
     console.error('[Notifications] Error syncing local notifications:', error);

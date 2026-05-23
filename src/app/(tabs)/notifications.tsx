@@ -82,15 +82,20 @@ export default function NotificationsScreen() {
         (a) => a.date === yesterdayISO && a.status === 'pending'
       );
       if (yesterdayMissed.length > 0) {
-        const titles = yesterdayMissed.map((a) => a.title).slice(0, 3).join(', ');
+        const taskBullets = yesterdayMissed
+          .slice(0, 3)
+          .map((a) => `• ${a.title}`)
+          .join('\n');
+        const truncationSuffix = yesterdayMissed.length > 3 ? `\n• and ${yesterdayMissed.length - 3} more…` : '';
+
         generatedNotifs.push({
           id: `missed_yesterday_${yesterdayISO}`,
           userId: user.id,
           groupId: user.groupId,
           isRead: false,
           type: 'missed_task',
-          title: "🕰️ Yesterday's Missed Tasks",
-          body: `You didn't complete ${yesterdayMissed.length} task(s) yesterday (${titles}${yesterdayMissed.length > 3 ? '…' : ''}). Please remember that consistency helps the whole family! Try to catch up today if you can.`,
+          title: `🕰️ Yesterday's Missed Tasks (${yesterdayMissed.length})`,
+          body: `You didn't complete your tasks yesterday:\n${taskBullets}${truncationSuffix}\n\nPlease remember that consistency helps the whole family! Try to catch up today if you can.`,
           createdAt: new Date(Date.now() - 60 * 60 * 1000), // 1 hour ago
         });
       }
@@ -100,15 +105,20 @@ export default function NotificationsScreen() {
         (a) => a.date === todayISO && a.status === 'pending'
       );
       if (todayPending.length > 0) {
-        const titles = todayPending.map((a) => a.title).slice(0, 5).join(', ');
+        const taskBullets = todayPending
+          .slice(0, 5)
+          .map((a) => `• ${a.title}`)
+          .join('\n');
+        const truncationSuffix = todayPending.length > 5 ? `\n• and ${todayPending.length - 5} more…` : '';
+
         generatedNotifs.push({
           id: `daily_summary_${todayISO}`,
           userId: user.id,
           groupId: user.groupId,
           isRead: false,
           type: 'daily_summary',
-          title: "📋 Today's Tasks",
-          body: `You have ${todayPending.length} task(s) pending: ${titles}${todayPending.length > 5 ? '…' : '.'}`,
+          title: `📋 Today's Tasks (${todayPending.length})`,
+          body: `You have ${todayPending.length} task(s) pending today:\n${taskBullets}${truncationSuffix}`,
           createdAt: new Date(), // Just now
         });
       }
@@ -138,7 +148,7 @@ export default function NotificationsScreen() {
 
           if (Object.keys(skippedByUser).length > 0) {
             const reportLines = Object.entries(skippedByUser)
-              .map(([uid, titles]) => `${userNames[uid] ?? uid}: ${titles.join(', ')}`)
+              .map(([uid, titles]) => `• ${userNames[uid] ?? uid}: ${titles.join(', ')}`)
               .join('\n');
 
             generatedNotifs.push({
