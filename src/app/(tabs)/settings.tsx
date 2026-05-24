@@ -208,13 +208,21 @@ export default function SettingsScreen() {
 
           <TouchableOpacity
             style={styles.dropdownHeader}
-            onPress={() => setDropdownOpen(!dropdownOpen)}
+            onPress={() => !savingTime && setDropdownOpen(!dropdownOpen)}
             activeOpacity={0.7}
+            disabled={savingTime}
           >
-            <Text style={styles.dropdownHeaderText}>
-              {user?.notificationTime || '09:00'}
-            </Text>
-            <Text style={styles.dropdownChevron}>{dropdownOpen ? '▲' : '▼'}</Text>
+            {savingTime ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.dropdownHeaderText, { color: Colors.textSecondary }]}>Saving...</Text>
+              </View>
+            ) : (
+              <Text style={styles.dropdownHeaderText}>
+                {user?.notificationTime || '09:00'}
+              </Text>
+            )}
+            {!savingTime && <Text style={styles.dropdownChevron}>{dropdownOpen ? '▲' : '▼'}</Text>}
           </TouchableOpacity>
 
           {dropdownOpen && (
@@ -255,13 +263,21 @@ export default function SettingsScreen() {
 
           <TouchableOpacity
             style={styles.dropdownHeader}
-            onPress={() => setTzDropdownOpen(!tzDropdownOpen)}
+            onPress={() => !savingTimezone && setTzDropdownOpen(!tzDropdownOpen)}
             activeOpacity={0.7}
+            disabled={savingTimezone}
           >
-            <Text style={styles.dropdownHeaderText} numberOfLines={1}>
-              {currentTzLabel}
-            </Text>
-            <Text style={styles.dropdownChevron}>{tzDropdownOpen ? '▲' : '▼'}</Text>
+            {savingTimezone ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.dropdownHeaderText, { color: Colors.textSecondary }]}>Saving...</Text>
+              </View>
+            ) : (
+              <Text style={styles.dropdownHeaderText} numberOfLines={1}>
+                {currentTzLabel}
+              </Text>
+            )}
+            {!savingTimezone && <Text style={styles.dropdownChevron}>{tzDropdownOpen ? '▲' : '▼'}</Text>}
           </TouchableOpacity>
 
           {tzDropdownOpen && (

@@ -1,10 +1,10 @@
-import React from 'react';
-import { Tabs, Redirect } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
-import { useAppTheme } from '../../contexts/ThemeContext';
-import { ThemeColors } from '../../constants/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { Redirect, Tabs } from 'expo-router';
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { ThemeColors } from '../../constants/colors';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppTheme } from '../../contexts/ThemeContext';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -66,7 +66,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon
               iconName={focused ? 'checkbox' : 'checkbox-outline'}
-              label="Tasks"
+              label="To Do"
               focused={focused}
             />
           ),
@@ -90,7 +90,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon
               iconName={focused ? 'clipboard' : 'clipboard-outline'}
-              label="Plan"
+              label="Tasks"
               focused={focused}
             />
           ),
@@ -102,7 +102,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon
               iconName={focused ? 'people' : 'people-outline'}
-              label="Family"
+              label="Members"
               focused={focused}
             />
           ),

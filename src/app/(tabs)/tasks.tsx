@@ -50,7 +50,11 @@ function TaskCard({
     <View style={[styles.card, !task.isActive && styles.cardInactive]}>
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleRow}>
-          <View style={[styles.activeIndicator, { backgroundColor: task.isActive ? Colors.success : Colors.textMuted }]} />
+          {task.emoji ? (
+            <Text style={styles.cardEmoji}>{task.emoji}</Text>
+          ) : (
+            <View style={[styles.activeIndicator, { backgroundColor: task.isActive ? Colors.success : Colors.textMuted }]} />
+          )}
           <Text style={[styles.cardTitle, !task.isActive && styles.textMuted]}>{task.title}</Text>
           <Text style={styles.cardPoints}>{task.complexity} pts</Text>
         </View>
@@ -103,10 +107,12 @@ function TaskCard({
 }
 
 const EMPTY_FORM = {
-  title: '', complexity: '10',
+  title: '', emoji: null as string | null, complexity: '10',
   weekDays: [...ALL_WEEK_DAYS] as number[], availableFor: [...USER_TYPES] as UserType[],
   assignedTo: null as string | null, isActive: true,
 };
+
+const CHORE_EMOJIS = ['🍳', '🍲', '🥗', '🍽️', '🪞', '🚽', '🛁', '🚿', '🪠', '🧻', '🧹', '🗑️', '🧤', '💡', '🌱', '🌻', '🛒', '🛏️', '🧸'];
 
 export default function TasksScreen() {
   const { Colors } = useAppTheme();
@@ -181,7 +187,7 @@ export default function TasksScreen() {
   const openEdit = (t: Task) => {
     setEditingTask(t);
     setForm({
-      title: t.title, complexity: String(t.complexity),
+      title: t.title, emoji: t.emoji || null, complexity: String(t.complexity),
       weekDays: t.weekDays || [], availableFor: t.availableFor,
       assignedTo: t.auto ? null : t.assignedTo, isActive: t.isActive,
     });
@@ -234,6 +240,7 @@ export default function TasksScreen() {
 
       const data = {
         title: form.title.trim(),
+        emoji: form.emoji,
         complexity: c,
         weekDays: activeDays,
         availableFor: form.availableFor.length === 0 ? [...USER_TYPES] : form.availableFor,
@@ -578,7 +585,7 @@ export default function TasksScreen() {
               {mixing ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <Ionicons name="sync-outline" size={18} color="#fff" />
+                <Ionicons name="shuffle-outline" size={18} color="#fff" />
               )}
             </TouchableOpacity>
           )}
@@ -681,6 +688,25 @@ export default function TasksScreen() {
                   onPress={() => setForm((p) => ({ ...p, assignedTo: u.id }))}
                 >
                   <Text style={[styles.assigneeText, form.assignedTo === u.id && styles.assigneeTextActive]}>{u.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Icon</Text>
+            <View style={styles.emojiGrid}>
+              <TouchableOpacity
+                style={[styles.emojiChip, !form.emoji && styles.emojiChipActive]}
+                onPress={() => setForm((p) => ({ ...p, emoji: null }))}
+              >
+                <Text style={styles.emojiText}>🟢</Text>
+              </TouchableOpacity>
+              {CHORE_EMOJIS.map((emo) => (
+                <TouchableOpacity
+                  key={emo}
+                  style={[styles.emojiChip, form.emoji === emo && styles.emojiChipActive]}
+                  onPress={() => setForm((p) => ({ ...p, emoji: emo }))}
+                >
+                  <Text style={styles.emojiText}>{emo}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -868,5 +894,32 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   clearBtn: {
     padding: 4,
+  },
+  emojiGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  emojiChip: {
+    backgroundColor: Colors.bgInput,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    minWidth: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '15',
+  },
+  emojiText: {
+    fontSize: 16,
+  },
+  cardEmoji: {
+    fontSize: 18,
   },
 });

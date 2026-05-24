@@ -36,6 +36,7 @@ export interface Task {
   id: string;
   groupId: string;
   title: string;
+  emoji?: string | null;
   complexity: number; // 1-100
   weekDays: number[]; // 0=Sun..6=Sat (active weekdays for scheduling)
   availableFor: UserType[]; // which user types can be assigned

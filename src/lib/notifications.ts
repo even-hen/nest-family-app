@@ -1,15 +1,14 @@
 import * as Notifications from 'expo-notifications';
 import { SchedulableTriggerInputTypes } from 'expo-notifications';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { Platform } from 'react-native';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
-import { getMondayISO } from '../utils/date';
 import { Assignment, User, UserType } from '../types';
+import { getMondayISO } from '../utils/date';
+import { db } from './firebase';
 
 // Setup background/foreground notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
     shouldShowBanner: true,
@@ -27,6 +26,15 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   if (existingStatus !== 'granted') {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
+  }
+
+  if (finalStatus === 'granted' && Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
   }
 
   return finalStatus === 'granted';
@@ -52,6 +60,15 @@ export async function syncLocalNotifications(
   }
 
   try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+      });
+    }
+
     // 1. Cancel all previously scheduled notifications to start fresh
     await Notifications.cancelAllScheduledNotificationsAsync();
 
@@ -112,6 +129,7 @@ export async function syncLocalNotifications(
             trigger: {
               type: SchedulableTriggerInputTypes.DATE,
               date: triggerDate,
+              channelId: 'default',
             },
           });
         }
@@ -180,6 +198,7 @@ export async function syncLocalNotifications(
             trigger: {
               type: SchedulableTriggerInputTypes.DATE,
               date: nextMonday,
+              channelId: 'default',
             },
           });
         }

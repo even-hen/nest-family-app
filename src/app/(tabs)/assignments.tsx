@@ -33,12 +33,14 @@ const STATUS_LABELS: Record<AssignmentStatus, string> = {
 
 function AssignmentCard({
   assignment,
+  emoji,
   showAssignee,
   assigneeName,
   canMarkDone,
   onMarkDone,
 }: {
   assignment: Assignment;
+  emoji?: string | null;
   showAssignee: boolean;
   assigneeName: string;
   canMarkDone: boolean;
@@ -50,6 +52,9 @@ function AssignmentCard({
   return (
     <View style={[styles.card, isPending && styles.cardPending]}>
       <View style={styles.cardLeft}>
+        {emoji ? (
+          <Text style={styles.cardEmoji}>{emoji}</Text>
+        ) : null}
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, !showAssignee && { marginBottom: 0 }]}>{assignment.title}</Text>
           {showAssignee && (
@@ -89,6 +94,7 @@ export default function AssignmentsScreen() {
   const { user } = useAuth();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [users, setUsers] = useState<Record<string, string>>({});
+  const [taskEmojis, setTaskEmojis] = useState<Record<string, string>>({});
   const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -120,7 +126,7 @@ export default function AssignmentsScreen() {
         } catch (_) { /* non-critical */ }
       })();
 
-      const [todaySnap, yesterdaySnap, usersSnap] = await Promise.all([
+      const [todaySnap, yesterdaySnap, usersSnap, tasksSnap] = await Promise.all([
         getDocs(query(
           collection(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS),
           where('groupId', '==', user.groupId),
@@ -133,6 +139,10 @@ export default function AssignmentsScreen() {
         )),
         getDocs(query(
           collection(db, FIRESTORE_COLLECTIONS.USERS),
+          where('groupId', '==', user.groupId)
+        )),
+        getDocs(query(
+          collection(db, FIRESTORE_COLLECTIONS.TASKS),
           where('groupId', '==', user.groupId)
         )),
       ]);
@@ -155,6 +165,15 @@ export default function AssignmentsScreen() {
       const nameMap: Record<string, string> = {};
       usersSnap.docs.forEach((d) => { nameMap[d.id] = d.data().name; });
       setUsers(nameMap);
+
+      const emojiMap: Record<string, string> = {};
+      tasksSnap.docs.forEach((d) => {
+        const tData = d.data();
+        if (tData.emoji) {
+          emojiMap[d.id] = tData.emoji;
+        }
+      });
+      setTaskEmojis(emojiMap);
     } catch (e) {
       console.error(e);
     }
@@ -267,7 +286,9 @@ export default function AssignmentsScreen() {
             <Text style={styles.sectionTitle}>Pending</Text>
             {pending.map((a) => (
               <AssignmentCard
-                key={a.id} assignment={a} showAssignee={showAll}
+                key={a.id} assignment={a}
+                emoji={taskEmojis[a.taskId] || null}
+                showAssignee={showAll}
                 assigneeName={users[a.assignedTo] ?? '—'}
                 canMarkDone={a.assignedTo === user?.id || user?.type === 'Adult'}
                 onMarkDone={handleMarkDone}
@@ -281,7 +302,9 @@ export default function AssignmentsScreen() {
             <Text style={styles.sectionTitle}>Completed</Text>
             {done.map((a) => (
               <AssignmentCard
-                key={a.id} assignment={a} showAssignee={showAll}
+                key={a.id} assignment={a}
+                emoji={taskEmojis[a.taskId] || null}
+                showAssignee={showAll}
                 assigneeName={users[a.assignedTo] ?? '—'}
                 canMarkDone={a.assignedTo === user?.id || user?.type === 'Adult'}
                 onMarkDone={handleMarkDone}
@@ -295,7 +318,9 @@ export default function AssignmentsScreen() {
             <Text style={styles.sectionTitle}>Skipped Yesterday</Text>
             {skipped.map((a) => (
               <AssignmentCard
-                key={a.id} assignment={{ ...a, status: 'skipped' }} showAssignee={showAll}
+                key={a.id} assignment={{ ...a, status: 'skipped' }}
+                emoji={taskEmojis[a.taskId] || null}
+                showAssignee={showAll}
                 assigneeName={users[a.assignedTo] ?? '—'}
                 canMarkDone={false}
                 onMarkDone={handleMarkDone}
@@ -339,14 +364,19 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   sectionTitle: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, marginTop: Spacing.md, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   card: {
     backgroundColor: Colors.bgCard, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, paddingVertical: 10, flexDirection: 'row',
+    paddingLeft: 10, paddingRight: Spacing.md, paddingVertical: 10, flexDirection: 'row',
     justifyContent: 'space-between', alignItems: 'center', borderWidth: 1,
     borderColor: Colors.border,
   },
   cardPending: { borderColor: Colors.border },
-  cardLeft: { flexDirection: 'row', flex: 1, gap: Spacing.sm },
+  cardLeft: { flexDirection: 'row', flex: 1, gap: Spacing.sm, alignItems: 'center' },
   cardInfo: { flex: 1 },
   cardTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary, marginBottom: 6 },
+  cardEmoji: {
+    fontSize: 22,
+    alignSelf: 'center',
+    marginRight: 2,
+  },
   cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   typeBadge: { backgroundColor: Colors.bgInput, borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: Colors.border },
   cardType: { fontSize: 11, color: Colors.textSecondary, fontWeight: '500' },

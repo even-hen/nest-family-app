@@ -44,6 +44,11 @@ Built on React Context & NativeWind:
 * Custom font typography using the premium **Outfit** font family.
 * Micro-animations designed using `react-native-reanimated` (including web-safe loaders).
 
+### 5. 🧼 Chore Emojis & Custom Iconography
+* **Curated Household Chores Selector**: Allows assigning quick-select custom emojis (such as cooking `🍳`, cleaning `🧹`, gardening `🌱`, pet care `🐕`, and laundry `🧺`) to tasks.
+* **Smart Fallbacks**: Automatically maintains clean, type-safe active/inactive status indicator fallback dots if no custom icon emoji is chosen.
+* **Unified Layout Alignment**: Coordinated across both **Schedule** and **Today's Assignments (To Do)** lists, complete with vertically centered pixel-perfect margins.
+
 ---
 
 ## 🛠️ Technology Stack
