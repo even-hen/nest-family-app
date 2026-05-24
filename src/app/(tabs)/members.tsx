@@ -67,13 +67,20 @@ export default function MembersScreen() {
       getDocs(query(collection(db, 'users'), where('groupId', '==', currentUser.groupId))),
       getDocs(query(collection(db, 'tasks'), where('groupId', '==', currentUser.groupId), where('isActive', '==', true))),
     ]);
-    setMembers(usersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as User)));
+    const sortedMembers = usersSnap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as User))
+      .sort((a, b) => {
+        if (a.id === currentUser?.id) return -1;
+        if (b.id === currentUser?.id) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    setMembers(sortedMembers);
     setTasks(tasksSnap.docs.map((d) => ({
       assignedTo: d.data().assignedTo,
       complexity: d.data().complexity,
       weekDays: d.data().weekDays || [],
     })));
-  }, [currentUser?.groupId]);
+  }, [currentUser?.groupId, currentUser?.id]);
 
   useFocusEffect(useCallback(() => { loadData().finally(() => setLoading(false)); }, [loadData]));
   const onRefresh = async () => { setRefreshing(true); await loadData(); setRefreshing(false); };

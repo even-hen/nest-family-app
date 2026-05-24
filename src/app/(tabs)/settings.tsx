@@ -307,25 +307,27 @@ export default function SettingsScreen() {
         </View>
 
         {/* Auto-distribute setting */}
-        <View style={styles.section}>
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1, paddingRight: 8 }}>
-              <Text style={styles.sectionTitle}>Auto-distribute tasks</Text>
-              <Text style={styles.sectionDesc}>Redistribute auto-assigned tasks every week to avoid repetition</Text>
+        {isAdult && (
+          <View style={styles.section}>
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.sectionTitle}>Auto-distribute tasks</Text>
+                <Text style={styles.sectionDesc}>Redistribute auto-assigned tasks every week to avoid repetition</Text>
+              </View>
+              {loadingAutoDistrib ? (
+                <ActivityIndicator color={Colors.primary} size="small" />
+              ) : (
+                <Switch
+                  value={autoDistrib}
+                  onValueChange={toggleAutoDistrib}
+                  disabled={user?.type !== 'Adult'}
+                  trackColor={{ true: Colors.primary, false: Colors.bgInput }}
+                  thumbColor={autoDistrib ? Colors.primaryLight : Colors.textMuted}
+                />
+              )}
             </View>
-            {loadingAutoDistrib ? (
-              <ActivityIndicator color={Colors.primary} size="small" />
-            ) : (
-              <Switch
-                value={autoDistrib}
-                onValueChange={toggleAutoDistrib}
-                disabled={user?.type !== 'Adult'}
-                trackColor={{ true: Colors.primary, false: Colors.bgInput }}
-                thumbColor={autoDistrib ? Colors.primaryLight : Colors.textMuted}
-              />
-            )}
           </View>
-        </View>
+        )}
 
         {/* Adult-only: Invite Members */}
         {isAdult && (

@@ -103,8 +103,13 @@ export default function StatsScreen() {
     });
 
     setAllAssignments(loadedAssignments);
-    setStats(Object.values(statsMap).sort((a, b) => b.done - a.done));
-  }, [user?.groupId, weekOffset]);
+    const sortedStats = Object.values(statsMap).sort((a, b) => {
+      if (a.userId === user?.id) return -1;
+      if (b.userId === user?.id) return 1;
+      return b.done - a.done;
+    });
+    setStats(sortedStats);
+  }, [user?.groupId, user?.id, weekOffset]);
 
   useFocusEffect(useCallback(() => { loadStats().finally(() => setLoading(false)); }, [loadStats]));
   const onRefresh = async () => { setRefreshing(true); await loadStats(); setRefreshing(false); };

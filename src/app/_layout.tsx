@@ -27,6 +27,8 @@ function ThemedApp() {
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...Ionicons.font,
+    'Ionicons': require('../../assets/fonts/Ionicons.ttf'),
+    'ionicons': require('../../assets/fonts/Ionicons.ttf'),
   });
 
   useEffect(() => {
