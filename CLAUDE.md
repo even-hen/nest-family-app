@@ -152,3 +152,8 @@ When modifying many documents simultaneously (such as creating weekly assignment
 
 ### 3. React Native Worklets for Animating UI
 When scheduling state updates inside a Native React Native Reanimated callback, you must invoke `scheduleOnRN` from `react-native-worklets` to transition state safely off the UI thread and onto the JS main thread (see `src/components/animated-icon.tsx`).
+
+### 4. GitHub Pages Asset Block (node_modules Paths)
+GitHub Pages CDN explicitly blocks and returns a `404` for any path containing a `/node_modules/` folder segment. The default `@expo/vector-icons` web build exports font assets under `assets/node_modules/...`, causing blank icon placeholders on the live site.
+- **Solution**: Copy the required `.ttf` font files into a local folder (e.g., `assets/fonts/`), and register them explicitly in `useFonts` inside the root layout (using both uppercase and lowercase aliases, e.g. `'Ionicons'` and `'ionicons'`). This bundles the asset into `/assets/assets/fonts/...`, bypassing the CDN block.
+
