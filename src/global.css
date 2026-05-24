@@ -10,8 +10,12 @@ body, div, span, text, p, a, input, textarea, button {
 }
 
 /* Guarantee that vector icons maintain their correct icon font families */
+[style*="font-family:ionicons"],
 [style*="font-family: ionicons"], 
+[style*="font-family:Ionicons"],
 [style*="font-family: Ionicons"],
+[style*="ionicons"],
+[style*="Ionicons"],
 [class*="ionicons"],
 [class*="Ionicons"] {
   font-family: ionicons, Ionicons !important;
