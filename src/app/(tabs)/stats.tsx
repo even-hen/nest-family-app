@@ -104,6 +104,7 @@ export default function StatsScreen() {
 
     setAllAssignments(loadedAssignments);
     const sortedStats = Object.values(statsMap).sort((a, b) => {
+      if (a.userId === b.userId) return 0;
       if (a.userId === user?.id) return -1;
       if (b.userId === user?.id) return 1;
       return b.done - a.done;

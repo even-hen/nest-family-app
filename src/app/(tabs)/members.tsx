@@ -70,6 +70,7 @@ export default function MembersScreen() {
     const sortedMembers = usersSnap.docs
       .map((d) => ({ id: d.id, ...d.data() } as User))
       .sort((a, b) => {
+        if (a.id === b.id) return 0;
         if (a.id === currentUser?.id) return -1;
         if (b.id === currentUser?.id) return 1;
         return a.name.localeCompare(b.name);
