@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   ActivityIndicator, RefreshControl,
   ScrollView,
@@ -33,6 +34,8 @@ export default function NotificationsScreen() {
   const [readIds, setReadIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasScrolled, setHasScrolled] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   // Load local read IDs from AsyncStorage
   const loadReadStates = useCallback(async () => {
@@ -201,17 +204,19 @@ export default function NotificationsScreen() {
   }, [user]);
 
   const initData = useCallback(async () => {
-    setLoading(true);
     await Promise.all([loadReadStates(), loadNotifications()]);
-    setLoading(false);
   }, [loadReadStates, loadNotifications]);
 
-  useEffect(() => {
-    initData();
-  }, [initData]);
+  useFocusEffect(
+    useCallback(() => {
+      setHasScrolled(false);
+      initData().finally(() => setLoading(false));
+    }, [initData])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
+    setHasScrolled(false);
     await loadNotifications();
     setRefreshing(false);
   };
@@ -265,8 +270,15 @@ export default function NotificationsScreen() {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        onContentSizeChange={() => {
+          if (!hasScrolled && notifications.length > 0) {
+            scrollViewRef.current?.scrollToEnd({ animated: false });
+            setHasScrolled(true);
+          }
+        }}
       >
         {notifications.length === 0 && (
           <View style={styles.empty}>

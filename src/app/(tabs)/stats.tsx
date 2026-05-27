@@ -597,7 +597,7 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   modalContainer: { flex: 1, backgroundColor: Colors.bg },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: Spacing.lg, paddingTop: 30, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    padding: Spacing.lg, paddingTop: 60, borderBottomWidth: 1, borderBottomColor: Colors.border,
     backgroundColor: Colors.bgCard,
   },
   modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
