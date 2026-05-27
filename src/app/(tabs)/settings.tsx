@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Alert, ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   doc, updateDoc, getDoc, Timestamp,
 } from 'firebase/firestore';
@@ -48,7 +49,8 @@ const TIMEZONES = [
 
 export default function SettingsScreen() {
   const { theme, setTheme, Colors } = useAppTheme();
-  const styles = useMemo(() => getStyles(Colors), [Colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => getStyles(Colors, insets), [Colors, insets]);
   const { user, refreshUser, signOut } = useAuth();
   const [generatingLink, setGeneratingLink] = useState(false);
   const [savingTime, setSavingTime] = useState(false);
@@ -345,10 +347,10 @@ function getRoleColor(type: string | undefined, Colors: ThemeColors) {
   return Colors.child;
 }
 
-const getStyles = (Colors: ThemeColors) => StyleSheet.create({
+const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   header: {
-    paddingHorizontal: Spacing.lg, paddingTop: 60, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.lg, paddingTop: insets?.top > 0 ? insets.top + 16 : 24, paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },

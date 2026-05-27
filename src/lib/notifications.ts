@@ -157,31 +157,31 @@ export async function syncLocalNotifications(
       }
     }
 
-    // Schedule "Skipped Yesterday" notification if applicable
+    // Schedule "Skipped Yesterday" notification if applicable (only if trigger time is in the future)
     if (skippedYesterday.length > 0) {
       const triggerNow = new Date();
       triggerNow.setHours(targetHour, targetMinute, 0, 0);
-      // If today's trigger time is still in the future, use it; otherwise fire immediately + 5s
-      const skippedTriggerDate = triggerNow.getTime() > Date.now() ? triggerNow : new Date(Date.now() + 5000);
 
-      const taskBullets = skippedYesterday
-        .slice(0, 5)
-        .map((t) => `• ${t.title}`)
-        .join('\n');
-      const truncationSuffix = skippedYesterday.length > 5 ? `\n• and ${skippedYesterday.length - 5} more…` : '';
+      if (triggerNow.getTime() > Date.now()) {
+        const taskBullets = skippedYesterday
+          .slice(0, 5)
+          .map((t) => `• ${t.title}`)
+          .join('\n');
+        const truncationSuffix = skippedYesterday.length > 5 ? `\n• and ${skippedYesterday.length - 5} more…` : '';
 
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `⚠️ Skipped Yesterday (${skippedYesterday.length})`,
-          body: `You skipped ${skippedYesterday.length} task(s) yesterday:\n${taskBullets}${truncationSuffix}\n\nConsistency helps the whole family — try to catch up today!`,
-          data: { type: 'skipped_yesterday' },
-        },
-        trigger: {
-          type: SchedulableTriggerInputTypes.DATE,
-          date: skippedTriggerDate,
-          channelId: 'default',
-        },
-      });
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `⚠️ Skipped Yesterday (${skippedYesterday.length})`,
+            body: `You skipped ${skippedYesterday.length} task(s) yesterday:\n${taskBullets}${truncationSuffix}\n\nConsistency helps the whole family — try to catch up today!`,
+            data: { type: 'skipped_yesterday' },
+          },
+          trigger: {
+            type: SchedulableTriggerInputTypes.DATE,
+            date: triggerNow,
+            channelId: 'default',
+          },
+        });
+      }
     }
 
     // 3. For Adult users, schedule the Weekly Missed Tasks Report

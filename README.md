@@ -37,9 +37,11 @@ Located in [`src/lib/notifications.ts`](file:///d:/Google%20Antigravity/Nest-you
 * Automatically clears outdated pending device alerts to prevent clutter.
 * Schedules daily morning/evening summaries for upcoming tasks over a rolling 7-day window.
 * Schedules a **Weekly Missed Tasks Report** for adult administrators every Monday morning to review skipped items from the prior week.
+* **Non-Intrusive Scheduling**: Avoids push notification spam on app launch by only scheduling yesterday's skipped tasks alert if the daily trigger time is in the future. When inside the app, yesterday's skipped tasks are beautifully displayed in the dedicated Alerts tab.
 
-### 4. 🎨 Premium Dynamic Theme System
-Built on React Context & NativeWind:
+### 4. 🎨 Premium Dynamic Theme and Layout System
+Built on React Context, NativeWind, and React Native Safe Area Context:
+* **Dynamic Safe Area Header Spacing**: Utilizes a root-level `SafeAreaProvider` and `useSafeAreaInsets` to dynamically scale the top padding of main tab headers, ensuring perfect, responsive spacing under hardware notches, status bars, and dynamic islands on iOS/Android, with clean spacious defaults on web.
 * Full automatic and manual switching between light and dark visual aesthetics.
 * Custom font typography using the premium **Outfit** font family.
 * Micro-animations designed using `react-native-reanimated` (including web-safe loaders).

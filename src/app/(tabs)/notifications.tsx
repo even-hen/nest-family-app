@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
@@ -25,7 +26,8 @@ const TYPE_ICONS: Record<string, string> = {
 
 export default function NotificationsScreen() {
   const { Colors } = useAppTheme();
-  const styles = getStyles(Colors);
+  const insets = useSafeAreaInsets();
+  const styles = React.useMemo(() => getStyles(Colors, insets), [Colors, insets]);
   const { user, setUnreadCount } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [readIds, setReadIds] = useState<string[]>([]);
@@ -98,7 +100,7 @@ export default function NotificationsScreen() {
 
       // 1. Missed Yesterday
       const yesterdayMissed = userAssignments.filter(
-        (a) => a.date === yesterdayISO && a.status === 'pending'
+        (a) => a.date === yesterdayISO && (a.status === 'skipped' || a.status === 'pending')
       );
       if (yesterdayMissed.length > 0) {
         const taskBullets = yesterdayMissed
@@ -317,12 +319,12 @@ function formatRelativeTime(date: Date): string {
   return 'Just now';
 }
 
-const getStyles = (Colors: ThemeColors) => StyleSheet.create({
+const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingHorizontal: Spacing.lg, paddingTop: 60, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.lg, paddingTop: insets?.top > 0 ? insets.top + 16 : 24, paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary },

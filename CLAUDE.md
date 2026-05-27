@@ -137,6 +137,7 @@ nest-app/
   2. Parses the user's notification time preference (e.g., `"09:00"`).
   3. Schedules **Daily Summaries** for the next 7 days indicating the specific tasks due today.
   4. For `Adult` members, compiles a **Weekly Missed Tasks Report** detailing skipped tasks from the previous week and schedules it for next Monday at their preferred time.
+  5. Schedules **Yesterday's Skipped Tasks** alert only if the trigger time is in the future. This avoids sending immediate push notification banners on every app start, relying on the **Alerts tab** for inside-the-app notification delivery.
 
 ---
 

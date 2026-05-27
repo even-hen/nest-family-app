@@ -4,6 +4,7 @@ import {
   ActivityIndicator, RefreshControl, Modal, TextInput, Alert,
   PanResponder,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,7 +57,8 @@ function toTitleCase(str: string): string {
 
 export default function StatsScreen() {
   const { Colors } = useAppTheme();
-  const styles = getStyles(Colors);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => getStyles(Colors, insets), [Colors, insets]);
   const { user, refreshUser } = useAuth();
   const [stats, setStats] = useState<WeekStat[]>([]);
   const [loading, setLoading] = useState(true);
@@ -545,11 +547,11 @@ export default function StatsScreen() {
   );
 }
 
-const getStyles = (Colors: ThemeColors) => StyleSheet.create({
+const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   header: {
-    paddingHorizontal: Spacing.lg, paddingTop: 60, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.lg, paddingTop: insets?.top > 0 ? insets.top + 16 : 24, paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary, marginBottom: 8 },

@@ -27,6 +27,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { ALL_WEEK_DAYS, DAYS_OF_WEEK, USER_TYPES } from '../../constants/domain';
 import { useAuth } from '../../contexts/AuthContext';
@@ -116,7 +117,8 @@ const CHORE_EMOJIS = ['🍳', '🍲', '🥗', '🍽️', '🪞', '🚽', '🛁',
 
 export default function TasksScreen() {
   const { Colors } = useAppTheme();
-  const styles = useMemo(() => getStyles(Colors), [Colors]);
+  const insets = useSafeAreaInsets();
+  const styles = useMemo(() => getStyles(Colors, insets), [Colors, insets]);
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [groupUsers, setGroupUsers] = useState<Record<string, string>>({});
@@ -743,12 +745,12 @@ export default function TasksScreen() {
   );
 }
 
-const getStyles = (Colors: ThemeColors) => StyleSheet.create({
+const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   center: { flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.lg, paddingTop: 60, paddingBottom: Spacing.md,
+    paddingHorizontal: Spacing.lg, paddingTop: insets?.top > 0 ? insets.top + 16 : 24, paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   title: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
