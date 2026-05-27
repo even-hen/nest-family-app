@@ -96,18 +96,7 @@ export default function TabsLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="members"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon
-              iconName={focused ? 'people' : 'people-outline'}
-              label="Members"
-              focused={focused}
-            />
-          ),
-        }}
-      />
+
       <Tabs.Screen
         name="notifications"
         options={{

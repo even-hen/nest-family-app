@@ -79,7 +79,7 @@ nest-app/
     │   ├── index.tsx       # Auth-aware entry redirector
     │   ├── (auth)/         # Unauthenticated onboarding flow (Login, Signup, Group Creation)
     │   └── (tabs)/         # Main Authenticated Tab Navigation:
-    │                       #   - Assignments, Members, Notifications, Settings, Stats, Tasks
+    │                       #   - Assignments, Members & Stats, Notifications, Settings, Tasks
     ├── components/         # Reusable UI component library (atomic layout blocks)
     ├── constants/          # central styling definitions (Colors, Radius, Spacers)
     ├── contexts/           # React Context providers (AuthContext, ThemeContext)

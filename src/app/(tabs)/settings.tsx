@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Alert, Switch, ActivityIndicator,
+  Alert, ActivityIndicator,
 } from 'react-native';
 import {
   doc, updateDoc, getDoc, Timestamp,
@@ -52,40 +52,9 @@ export default function SettingsScreen() {
   const { user, refreshUser, signOut } = useAuth();
   const [generatingLink, setGeneratingLink] = useState(false);
   const [savingTime, setSavingTime] = useState(false);
-
   const [savingTimezone, setSavingTimezone] = useState(false);
-  const [autoDistrib, setAutoDistrib] = useState(true);
-  const [loadingAutoDistrib, setLoadingAutoDistrib] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [tzDropdownOpen, setTzDropdownOpen] = useState(false);
-
-  useEffect(() => {
-    const fetchGroupSettings = async () => {
-      if (!user?.groupId) return;
-      try {
-        const groupSnap = await getDoc(doc(db, 'groups', user.groupId));
-        if (groupSnap.exists()) {
-          setAutoDistrib(groupSnap.data()?.autoDistribution ?? false);
-        }
-      } catch (e) {
-        console.error('Error fetching group settings:', e);
-      }
-    };
-    fetchGroupSettings();
-  }, [user?.groupId]);
-
-  const toggleAutoDistrib = async (value: boolean) => {
-    if (!user?.groupId || user.type !== 'Adult') return;
-    setLoadingAutoDistrib(true);
-    try {
-      await updateDoc(doc(db, 'groups', user.groupId), { autoDistribution: value });
-      setAutoDistrib(value);
-    } catch (e) {
-      Alert.alert('Error', 'Could not update auto-distribution setting');
-    } finally {
-      setLoadingAutoDistrib(false);
-    }
-  };
 
   const isAdult = user?.type === 'Adult';
 
@@ -306,28 +275,6 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        {/* Auto-distribute setting */}
-        {isAdult && (
-          <View style={styles.section}>
-            <View style={styles.switchRow}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={styles.sectionTitle}>Auto-distribute tasks</Text>
-                <Text style={styles.sectionDesc}>Redistribute auto-assigned tasks every week to avoid repetition</Text>
-              </View>
-              {loadingAutoDistrib ? (
-                <ActivityIndicator color={Colors.primary} size="small" />
-              ) : (
-                <Switch
-                  value={autoDistrib}
-                  onValueChange={toggleAutoDistrib}
-                  disabled={user?.type !== 'Adult'}
-                  trackColor={{ true: Colors.primary, false: Colors.bgInput }}
-                  thumbColor={autoDistrib ? Colors.primaryLight : Colors.textMuted}
-                />
-              )}
-            </View>
-          </View>
-        )}
 
         {/* Adult-only: Invite Members */}
         {isAdult && (

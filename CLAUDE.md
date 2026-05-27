@@ -53,7 +53,7 @@ nest-app/
     │   ├── _layout.tsx     # App root layout, context wrappers
     │   ├── index.tsx       # Authentication-aware dynamic entry redirector
     │   ├── (auth)/         # Unauthenticated group: login, register, setup-group
-    │   └── (tabs)/         # Authenticated tab-bar: assignments, members, notifications, settings, stats, tasks
+    │   └── (tabs)/         # Authenticated tab-bar: assignments, notifications, settings, stats, tasks
     ├── components/         # Shared UI components
     │   ├── ui/             # Atomic/modular UI components (e.g., collapsible)
     │   ├── animated-icon.tsx# React Native Reanimated web-safe custom loader

@@ -60,21 +60,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       const lastWeekStart = getMondayISO(new Date(Date.now() - 7 * 86400000));
 
-      const [assignmentsSnap, dbNotifsSnap] = await Promise.all([
-        getDocs(
-          query(
-            collection(db, 'assignments'),
-            where('assignedTo', '==', uid),
-            where('status', '==', 'pending')
-          )
-        ),
-        getDocs(
-          query(
-            collection(db, 'notifications'),
-            where('userId', '==', uid)
-          )
-        ),
-      ]);
+      const assignmentsSnap = await getDocs(
+        query(
+          collection(db, 'assignments'),
+          where('assignedTo', '==', uid),
+          where('status', '==', 'pending')
+        )
+      );
 
       const storedRead = await AsyncStorage.getItem(`read_notifs_${uid}`);
       const readIds = storedRead ? JSON.parse(storedRead) : [];
@@ -107,13 +99,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           unread++;
         }
       }
-
-      // 4. DB Notifications
-      dbNotifsSnap.docs.forEach((doc) => {
-        if (!readIds.includes(doc.id) && !doc.data().isRead) {
-          unread++;
-        }
-      });
 
       setUnreadCount(unread);
     } catch (e) {

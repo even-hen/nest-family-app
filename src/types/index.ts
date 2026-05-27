@@ -68,7 +68,7 @@ export interface Notification {
   groupId: string;
   title: string;
   body: string;
-  type: 'daily_summary' | 'missed_task' | 'unassigned_tasks' | 'weekly_report';
+  type: 'daily_summary' | 'missed_task' | 'weekly_report';
   isRead: boolean;
   createdAt: Date;
 }

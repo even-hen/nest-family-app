@@ -20,7 +20,6 @@ import { getMondayISO, getTodayISO, getYesterdayISO } from '../../utils/date';
 const TYPE_ICONS: Record<string, string> = {
   daily_summary: 'clipboard-outline',
   missed_task: 'alert-circle-outline',
-  unassigned_tasks: 'help-circle-outline',
   weekly_report: 'bar-chart-outline',
 };
 
@@ -54,8 +53,8 @@ export default function NotificationsScreen() {
       const yesterdayISO = getYesterdayISO();
       const lastWeekStart = getMondayISO(new Date(Date.now() - 7 * 86400000));
 
-      // Fetch user assignments, group users, and persisted notifications from Firestore
-      const [assignmentsSnap, groupUsersSnap, dbNotifsSnap] = await Promise.all([
+      // Fetch user assignments and group users
+      const [assignmentsSnap, groupUsersSnap] = await Promise.all([
         getDocs(
           query(
             collection(db, 'assignments'),
@@ -66,12 +65,6 @@ export default function NotificationsScreen() {
           query(
             collection(db, 'users'),
             where('groupId', '==', user.groupId)
-          )
-        ),
-        getDocs(
-          query(
-            collection(db, 'notifications'),
-            where('userId', '==', user.id)
           )
         ),
       ]);
@@ -194,25 +187,10 @@ export default function NotificationsScreen() {
         }
       }
 
-      // Map and merge Firestore notifications (e.g. unassigned_tasks)
-      const firestoreNotifs: Notification[] = dbNotifsSnap.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          userId: data.userId,
-          groupId: data.groupId,
-          isRead: data.isRead || false,
-          type: data.type,
-          title: data.title,
-          body: data.body,
-          createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
-        } as Notification;
-      });
+      const allNotifications = [...generatedNotifs];
 
-      const allNotifications = [...generatedNotifs, ...firestoreNotifs];
-
-      // Sort newest first
-      allNotifications.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      // Sort oldest first (ascending order)
+      allNotifications.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
       setNotifications(allNotifications);
     } catch (e) {

@@ -1,25 +1,37 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl, Modal,
+  ActivityIndicator, RefreshControl, Modal, TextInput, Alert,
+  PanResponder,
 } from 'react-native';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { User, UserType } from '../../types';
+import { getTypeColor } from '../../utils/colors';
+import { USER_TYPES } from '../../constants/domain';
 
 interface WeekStat {
   userId: string;
   userName: string;
+  userType: UserType;
   done: number;
   skipped: number;
   pending: number;
   totalComplexityDone: number;
   resource: number;
+  usedPct: number;
 }
+
+const getCapacityColor = (val: number, Colors: ThemeColors) => {
+  if (val <= 30) return Colors.accent;
+  if (val <= 70) return Colors.success;
+  return Colors.primary;
+};
 
 function getWeekStart(offsetWeeks = 0): string {
   const d = new Date();
@@ -45,7 +57,7 @@ function toTitleCase(str: string): string {
 export default function StatsScreen() {
   const { Colors } = useAppTheme();
   const styles = getStyles(Colors);
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [stats, setStats] = useState<WeekStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -57,32 +69,91 @@ export default function StatsScreen() {
   const [detailUser, setDetailUser] = useState<{ id: string; name: string } | null>(null);
   const [detailStatus, setDetailStatus] = useState<'done' | 'skipped' | 'pending' | null>(null);
 
+  // Edit Modal States
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [form, setForm] = useState({ name: '', resource: 100, type: 'Adult' as UserType });
+  const [saving, setSaving] = useState(false);
+
+  const [sliderWidth, setSliderWidth] = useState(200);
+  const resourceRef = useRef(form.resource);
+  useEffect(() => {
+    resourceRef.current = form.resource;
+  }, [form.resource]);
+  const startValRef = useRef(form.resource);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (evt) => {
+      const initialX = evt.nativeEvent.locationX;
+      const initialVal = Math.max(0, Math.min(100, Math.round((initialX / sliderWidth) * 10) * 10));
+      setForm((p) => ({ ...p, resource: initialVal }));
+      startValRef.current = initialVal;
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const deltaPercent = (gestureState.dx / sliderWidth) * 100;
+      const rawVal = startValRef.current + deltaPercent;
+      const steppedVal = Math.max(0, Math.min(100, Math.round(rawVal / 10) * 10));
+      setForm((p) => ({ ...p, resource: steppedVal }));
+    },
+    onPanResponderRelease: () => {}
+  }), [sliderWidth]);
+
+  const isAdult = user?.type === 'Adult';
+
   const loadStats = useCallback(async () => {
     if (!user?.groupId) return;
     const weekStart = getWeekStart(weekOffset);
 
-    const [usersSnap, assignmentsSnap] = await Promise.all([
+    const [usersSnap, assignmentsSnap, tasksSnap] = await Promise.all([
       getDocs(query(collection(db, 'users'), where('groupId', '==', user.groupId))),
       getDocs(query(
         collection(db, 'assignments'),
         where('groupId', '==', user.groupId),
         where('weekStart', '==', weekStart),
       )),
+      getDocs(query(collection(db, 'tasks'), where('groupId', '==', user.groupId), where('isActive', '==', true))),
     ]);
 
-    const userMap: Record<string, { name: string; resource: number }> = {};
+    const userMap: Record<string, { name: string; resource: number; type: UserType }> = {};
     usersSnap.docs.forEach((d) => {
-      userMap[d.id] = { name: d.data().name, resource: d.data().resource };
+      const data = d.data();
+      userMap[d.id] = {
+        name: data.name,
+        resource: data.resource ?? 100,
+        type: data.type ?? 'Child',
+      };
     });
+
+    const tasksList = tasksSnap.docs.map((d) => ({
+      assignedTo: d.data().assignedTo,
+      complexity: d.data().complexity,
+      weekDays: d.data().weekDays || [],
+    }));
+
+    const getResourceUsed = (userId: string) => {
+      return tasksList
+        .filter((t) => t.assignedTo === userId)
+        .reduce((sum, t) => sum + t.complexity * (t.weekDays ? t.weekDays.length : 0), 0);
+    };
+
+    const totalWeeklyCost = tasksList.reduce((sum, t) => sum + t.complexity * (t.weekDays ? t.weekDays.length : 0), 0);
+    const totalResource = Object.values(userMap).reduce((sum, m) => sum + m.resource, 0);
 
     const statsMap: Record<string, WeekStat> = {};
     for (const uid of Object.keys(userMap)) {
+      const usedCost = getResourceUsed(uid);
+      const userShare = totalResource > 0 ? (userMap[uid].resource / totalResource) * totalWeeklyCost : 0;
+      const usedPct = userShare > 0 ? Math.round((usedCost / userShare) * 100) : 0;
+
       statsMap[uid] = {
         userId: uid,
         userName: userMap[uid].name,
+        userType: userMap[uid].type,
         done: 0, skipped: 0, pending: 0,
         totalComplexityDone: 0,
         resource: userMap[uid].resource,
+        usedPct: usedPct,
       };
     }
 
@@ -114,6 +185,54 @@ export default function StatsScreen() {
 
   useFocusEffect(useCallback(() => { loadStats().finally(() => setLoading(false)); }, [loadStats]));
   const onRefresh = async () => { setRefreshing(true); await loadStats(); setRefreshing(false); };
+
+  const openEdit = (s: WeekStat) => {
+    setEditingUser({
+      id: s.userId,
+      name: s.userName,
+      type: s.userType,
+      resource: s.resource,
+    } as any);
+    setForm({ name: s.userName, resource: s.resource, type: s.userType });
+  };
+
+  const handleSave = async () => {
+    if (!editingUser) return;
+    if (form.name.trim().length < 2) { Alert.alert('Error', 'Name must be at least 2 characters'); return; }
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', editingUser.id), {
+        name: form.name.trim(),
+        resource: form.resource,
+        type: form.type,
+      });
+      if (editingUser.id === user?.id) await refreshUser();
+      await loadStats();
+      setEditingUser(null);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Could not update user');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = (userId: string) => {
+    Alert.alert('Remove Member', 'Remove this member from the group?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          try {
+            await updateDoc(doc(db, 'users', userId), { groupId: null });
+            await loadStats();
+            setEditingUser(null);
+          } catch (e: any) {
+            Alert.alert('Error', e?.message ?? 'Could not remove member');
+          }
+        },
+      },
+    ]);
+  };
 
   const formatAssignmentDate = useCallback((dateStr: string): string => {
     const [year, month, day] = dateStr.split('-').map(Number);
@@ -163,7 +282,7 @@ export default function StatsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Weekly Stats</Text>
+        <Text style={styles.title}>Members & Stats</Text>
         <View style={styles.weekNav}>
           <TouchableOpacity
             style={styles.navBtn}
@@ -193,14 +312,47 @@ export default function StatsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
         {stats.map((s) => {
-          const total = s.done + s.skipped + s.pending;
-          const completionPct = total > 0 ? Math.round((s.done / total) * 100) : 0;
           const isMe = s.userId === user?.id;
+          const canEdit = isAdult || s.userId === user?.id;
 
           return (
             <View key={s.userId} style={[styles.card, isMe && styles.cardMe]}>
+              {/* Header row at the top: Name and chips on left, edit icon on right */}
+              <View style={[styles.cardHeader, { marginBottom: Spacing.sm }]}>
+                <View style={styles.nameRow}>
+                  <Text style={styles.memberName}>{toTitleCase(s.userName)}</Text>
+
+                  {/* Role chip displayed after user name */}
+                  <View style={[styles.typePill, { backgroundColor: getTypeColor(s.userType, Colors) + '15', borderWidth: 1, borderColor: getTypeColor(s.userType, Colors) + '30' }]}>
+                    <Text style={[styles.typePillText, { color: getTypeColor(s.userType, Colors) }]}>{s.userType}</Text>
+                  </View>
+
+                  {isMe && (
+                    <View style={styles.youBadge}>
+                      <Text style={styles.youText}>You</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Edit icon displayed on the right side of the card header */}
+                {canEdit && (
+                  <TouchableOpacity onPress={() => openEdit(s)} style={styles.editIconBtnRight} activeOpacity={0.7}>
+                    <Ionicons name="create-outline" size={18} color={Colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Completion / Load bar in the middle */}
+              <View style={styles.barRow}>
+                <View style={[styles.barBg, weekOffset > 0 && { backgroundColor: Colors.border }]}>
+                  {weekOffset === 0 && (
+                    <View style={[styles.barFill, { width: `${Math.min(100, s.usedPct)}%` as any }]} />
+                  )}
+                </View>
+              </View>
+
               {/* Stat pills */}
-              <View style={[styles.pillsRow, { marginBottom: Spacing.md }]}>
+              <View style={styles.pillsRow}>
                 <TouchableOpacity
                   style={[styles.pill, { backgroundColor: Colors.done + '20' }]}
                   activeOpacity={0.7}
@@ -246,25 +398,17 @@ export default function StatsScreen() {
                 </View>
               </View>
 
-              {/* Completion bar */}
-              <View style={styles.barRow}>
-                <View style={styles.barBg}>
-                  <View style={[styles.barFill, { width: `${completionPct}%` as any }]} />
+              {/* Capacity and Load row at the very bottom of the card (only for current week) */}
+              {weekOffset === 0 && (
+                <View style={styles.bottomInfoRow}>
+                  <Text style={styles.infoText}>
+                    Capacity: <Text style={styles.infoValue}>{s.resource}</Text>
+                  </Text>
+                  <Text style={styles.infoText}>
+                    Load: <Text style={styles.infoValue}>{s.usedPct}%</Text>
+                  </Text>
                 </View>
-              </View>
-
-              {/* Name and Percents */}
-              <View style={[styles.cardHeader, { marginBottom: 0 }]}>
-                <View style={styles.nameRow}>
-                  <Text style={styles.memberName}>{toTitleCase(s.userName)}</Text>
-                  {isMe && (
-                    <View style={styles.youBadge}>
-                      <Text style={styles.youText}>You</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.completion}>{completionPct}%</Text>
-              </View>
+              )}
             </View>
           );
         })}
@@ -330,6 +474,69 @@ export default function StatsScreen() {
                   </View>
                 </View>
               ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Edit Modal (Consolidated from MembersScreen) */}
+      <Modal visible={!!editingUser} animationType="slide" presentationStyle="pageSheet">
+        <View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Edit Member</Text>
+            <TouchableOpacity onPress={() => setEditingUser(null)}>
+              <Text style={styles.modalClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            <Text style={styles.label}>Name</Text>
+            <TextInput
+              style={styles.input} value={form.name} onChangeText={(v) => setForm((p) => ({ ...p, name: v }))}
+              placeholder="Full name" placeholderTextColor={Colors.textMuted}
+            />
+
+            {isAdult && (
+              <>
+                <Text style={styles.label}>Role</Text>
+                <View style={styles.typeRow}>
+                  {USER_TYPES.map((t) => (
+                    <TouchableOpacity
+                      key={t}
+                      style={[styles.typeBtn, form.type === t && { borderColor: getTypeColor(t, Colors), backgroundColor: getTypeColor(t, Colors) + '15' }]}
+                      onPress={() => setForm((p) => ({ ...p, type: t }))}
+                    >
+                      <Text style={[styles.typeBtnText, form.type === t && { color: getTypeColor(t, Colors) }]}>{t}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            <Text style={styles.label}>Capacity: <Text style={{ color: getCapacityColor(form.resource, Colors) }}>{form.resource}</Text></Text>
+            <View style={styles.sliderContainer}>
+              <View 
+                style={styles.trackWrapper}
+                onLayout={(e) => setSliderWidth(e.nativeEvent.layout.width)}
+                {...panResponder.panHandlers}
+              >
+                <View style={styles.trackBg} />
+                <View style={[styles.trackFill, { width: `${form.resource}%`, backgroundColor: getCapacityColor(form.resource, Colors) }]} />
+                
+                {/* Single Thumb Indicator */}
+                <View style={[styles.thumbContainer, { left: `${form.resource}%` }]} pointerEvents="none">
+                  <View style={[styles.sliderThumb, { borderColor: getCapacityColor(form.resource, Colors), shadowColor: getCapacityColor(form.resource, Colors) }]} />
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity style={[styles.saveBtn, saving && styles.btnDisabled]} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
+            </TouchableOpacity>
+
+            {isAdult && editingUser?.id !== user?.id && (
+              <TouchableOpacity style={styles.removeBtn} onPress={() => editingUser && handleRemove(editingUser.id)}>
+                <Text style={styles.removeBtnText}>Remove from Group</Text>
+              </TouchableOpacity>
             )}
           </ScrollView>
         </View>
@@ -423,4 +630,45 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   modalCardPoints: { fontSize: 13, fontWeight: '600', color: 'rgb(255, 179, 71)' },
   modalEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
   modalEmptyText: { fontSize: 15, color: Colors.textMuted, fontWeight: '500' },
+
+  // Added styles for consolidated Members management and Type Pills
+  editIconBtnRight: { padding: 4, justifyContent: 'center', alignItems: 'center' },
+  bottomInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border + '30',
+  },
+  cardHeaderWrapped: { flexDirection: 'column', alignItems: 'stretch', gap: 6 },
+  nameRowWrapped: { flexWrap: 'wrap' },
+  rightInfoRowWrapped: { alignSelf: 'flex-end', marginTop: 2 },
+  rightInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  infoText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
+  infoValue: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
+  editIconBtn: { marginRight: 4, justifyContent: 'center', alignItems: 'center' },
+  typePill: { height: 20, justifyContent: 'center', alignItems: 'center', borderRadius: 4, paddingHorizontal: 8, borderWidth: 1 },
+  typePillText: { fontSize: 10, fontWeight: '600' },
+  modal: { flex: 1, backgroundColor: Colors.bg },
+  modalBody: { padding: Spacing.lg, gap: Spacing.sm, paddingBottom: 60 },
+  modalClose: { fontSize: 18, color: Colors.textSecondary },
+  label: { fontSize: 13, color: Colors.textSecondary, fontWeight: '600', marginTop: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: { backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md, color: Colors.textPrimary, fontSize: 15, borderWidth: 1, borderColor: Colors.border },
+  typeRow: { flexDirection: 'row', gap: Spacing.sm },
+  typeBtn: { flex: 1, backgroundColor: Colors.bgInput, borderRadius: Radius.sm, padding: Spacing.md, alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
+  typeBtnText: { color: Colors.textSecondary, fontWeight: '600', fontSize: 13 },
+  sliderContainer: { marginTop: Spacing.sm, marginBottom: Spacing.md },
+  trackWrapper: { height: 40, justifyContent: 'center', position: 'relative' },
+  trackBg: { height: 6, backgroundColor: Colors.bgInput, borderRadius: 3, width: '100%' },
+  trackFill: { height: 6, borderRadius: 3, position: 'absolute', left: 0 },
+  thumbContainer: { position: 'absolute', top: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', width: 24, marginLeft: -12 },
+  sliderThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', borderWidth: 4, shadowOpacity: 0.5, shadowRadius: 6, elevation: 4 },
+  saveBtn: { backgroundColor: Colors.primary, borderRadius: Radius.sm, padding: Spacing.md, alignItems: 'center', marginTop: 16 },
+  btnDisabled: { opacity: 0.6 },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  removeBtn: { backgroundColor: Colors.accent + '10', borderRadius: Radius.sm, padding: Spacing.md, alignItems: 'center', marginTop: 8, borderWidth: 1, borderColor: Colors.accent + '20' },
+  removeBtnText: { color: Colors.accent, fontWeight: '600', fontSize: 14 },
 });

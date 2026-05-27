@@ -1,6 +1,6 @@
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 
 initializeApp();
 const db = getFirestore();
@@ -164,21 +164,7 @@ exports.weeklyDistribution = onSchedule('0 * * * *', async () => {
 
     await batch.commit();
 
-    // Notify adults about unassigned tasks
-    if (unassigned.length > 0) {
-      const notifBatch = db.batch();
-      adultsSnap.docs.forEach((u) => {
-        const ref = db.collection('notifications').doc();
-        notifBatch.set(ref, {
-          userId: u.id, groupId, isRead: false,
-          type: 'unassigned_tasks',
-          title: '⚠️ Unassigned Tasks',
-          body: `${unassigned.length} task(s) could not be automatically assigned this week: ${unassigned.map((t) => t.title).join(', ')}. Please assign them manually.`,
-          createdAt: Timestamp.now(),
-        });
-      });
-      await notifBatch.commit();
-    }
+
 
     console.log(`Group ${groupId}: ${assignments.length} assigned, ${unassigned.length} unassigned`);
   }

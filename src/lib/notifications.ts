@@ -89,17 +89,38 @@ export async function syncLocalNotifications(
       upcomingDatesISO.push(`${y}-${m}-${dayStr}`);
     }
 
-    const assignmentsSnap = await getDocs(
-      query(
-        collection(db, 'assignments'),
-        where('assignedTo', '==', userId),
-        where('status', '==', 'pending')
-      )
-    );
+    const [pendingSnap, skippedYesterdaySnap] = await Promise.all([
+      getDocs(
+        query(
+          collection(db, 'assignments'),
+          where('assignedTo', '==', userId),
+          where('status', '==', 'pending')
+        )
+      ),
+      getDocs(
+        query(
+          collection(db, 'assignments'),
+          where('assignedTo', '==', userId),
+          where('status', '==', 'skipped')
+        )
+      ),
+    ]);
 
-    const pendingAssignments = assignmentsSnap.docs.map(
+    const pendingAssignments = pendingSnap.docs.map(
       (doc) => ({ id: doc.id, ...doc.data() } as Assignment)
     );
+
+    // Compute yesterday's ISO date string
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yy = yesterday.getFullYear();
+    const ym = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const yd = String(yesterday.getDate()).padStart(2, '0');
+    const yesterdayISO = `${yy}-${ym}-${yd}`;
+
+    const skippedYesterday = skippedYesterdaySnap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() } as Assignment))
+      .filter((a) => a.date === yesterdayISO);
 
     // Schedule daily summaries for the next 7 days
     for (let i = 0; i < 7; i++) {
@@ -134,6 +155,33 @@ export async function syncLocalNotifications(
           });
         }
       }
+    }
+
+    // Schedule "Skipped Yesterday" notification if applicable
+    if (skippedYesterday.length > 0) {
+      const triggerNow = new Date();
+      triggerNow.setHours(targetHour, targetMinute, 0, 0);
+      // If today's trigger time is still in the future, use it; otherwise fire immediately + 5s
+      const skippedTriggerDate = triggerNow.getTime() > Date.now() ? triggerNow : new Date(Date.now() + 5000);
+
+      const taskBullets = skippedYesterday
+        .slice(0, 5)
+        .map((t) => `• ${t.title}`)
+        .join('\n');
+      const truncationSuffix = skippedYesterday.length > 5 ? `\n• and ${skippedYesterday.length - 5} more…` : '';
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `⚠️ Skipped Yesterday (${skippedYesterday.length})`,
+          body: `You skipped ${skippedYesterday.length} task(s) yesterday:\n${taskBullets}${truncationSuffix}\n\nConsistency helps the whole family — try to catch up today!`,
+          data: { type: 'skipped_yesterday' },
+        },
+        trigger: {
+          type: SchedulableTriggerInputTypes.DATE,
+          date: skippedTriggerDate,
+          channelId: 'default',
+        },
+      });
     }
 
     // 3. For Adult users, schedule the Weekly Missed Tasks Report

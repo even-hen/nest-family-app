@@ -130,22 +130,8 @@ async function run() {
     }
   }
 
-  // Create notifications if any tasks were unassigned
   if (unassigned.length > 0) {
     console.log(`Warning: ${unassigned.length} tasks could not be assigned.`);
-    const adults = users.filter(u => u.type === 'Adult');
-    adults.forEach(u => {
-      const notifRef = doc(collection(db, 'notifications'));
-      batch.set(notifRef, {
-        userId: u.id,
-        groupId,
-        isRead: false,
-        type: 'unassigned_tasks',
-        title: '⚠️ Unassigned Tasks',
-        body: `${unassigned.length} task(s) could not be automatically assigned: ${unassigned.map(t => t.title).join(', ')}.`,
-        createdAt: Timestamp.now(),
-      });
-    });
   }
 
   await batch.commit();
