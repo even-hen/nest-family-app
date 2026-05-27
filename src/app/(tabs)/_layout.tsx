@@ -78,7 +78,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon
               iconName={focused ? 'bar-chart' : 'bar-chart-outline'}
-              label="Stats"
+              label="Members"
               focused={focused}
             />
           ),
