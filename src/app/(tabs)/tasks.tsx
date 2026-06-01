@@ -283,9 +283,9 @@ export default function TasksScreen() {
       const todayOrder = getWeekDayOrderIndex(todayDayIndex);
 
       const getDateForWeekday = (weekStart: string, idx: number) => {
-        const d = new Date(weekStart);
+        const d = new Date(`${weekStart}T00:00:00.000Z`);
         const offset = idx === 0 ? 6 : idx - 1;
-        d.setDate(d.getDate() + offset);
+        d.setUTCDate(d.getUTCDate() + offset);
         return d.toISOString().split('T')[0];
       };
 
@@ -461,9 +461,9 @@ export default function TasksScreen() {
         const todayDateISO = new Date().toISOString().split('T')[0];
 
         const getDateForWeekday = (weekStart: string, idx: number) => {
-          const d = new Date(weekStart);
+          const d = new Date(`${weekStart}T00:00:00.000Z`);
           const offset = idx === 0 ? 6 : idx - 1;
-          d.setDate(d.getDate() + offset);
+          d.setUTCDate(d.getUTCDate() + offset);
           return d.toISOString().split('T')[0];
         };
 

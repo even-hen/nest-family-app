@@ -5,12 +5,12 @@ const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 initializeApp();
 const db = getFirestore();
 
-// ─── Helper: get Monday of a given date ────────────────────────────────────
+// ─── Helper: get Monday of a given date in a UTC-safe way ──────────────────────
 function getMondayISO(date) {
   const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
   return d.toISOString().split('T')[0];
 }
 
@@ -21,13 +21,12 @@ function getTodayISO() {
 
 // ─── CRON 2: Run every hour — auto-distribute tasks based on group timezone ─
 exports.weeklyDistribution = onSchedule('0 * * * *', async () => {
-  const weekStart = getMondayISO(new Date());
   const groupsSnap = await db.collection('groups').where('autoDistribution', '==', true).get();
 
   const getDateForWeekday = (weekStartStr, dayIndex) => {
-    const d = new Date(weekStartStr);
+    const d = new Date(`${weekStartStr}T00:00:00.000Z`);
     const offset = dayIndex === 0 ? 6 : dayIndex - 1;
-    d.setDate(d.getDate() + offset);
+    d.setUTCDate(d.getUTCDate() + offset);
     return d.toISOString().split('T')[0];
   };
 
@@ -49,6 +48,7 @@ exports.weeklyDistribution = onSchedule('0 * * * *', async () => {
 
     let groupLocalHour;
     let groupLocalDay;
+    let groupLocalDateStr;
     try {
       const timeFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hour12: false });
       let formattedHour = timeFormatter.format(new Date());
@@ -57,13 +57,29 @@ exports.weeklyDistribution = onSchedule('0 * * * *', async () => {
 
       const weekdayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' });
       groupLocalDay = weekdayFormatter.format(new Date());
+
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const year = parts.find((p) => p.type === 'year').value;
+      const month = parts.find((p) => p.type === 'month').value;
+      const day = parts.find((p) => p.type === 'day').value;
+      groupLocalDateStr = `${year}-${month}-${day}`;
     } catch (e) {
       groupLocalHour = new Date().getUTCHours().toString().padStart(2, '0') + ':00';
       groupLocalDay = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short' }).format(new Date());
+      groupLocalDateStr = new Date().toISOString().split('T')[0];
     }
 
     // Run distribution at 01:00 local time on Monday
     if (groupLocalDay !== 'Mon' || groupLocalHour !== '01:00') continue;
+
+    // Resolve current local weekStart specifically for this group
+    const groupLocalDate = new Date(`${groupLocalDateStr}T00:00:00.000Z`);
+    const weekStart = getMondayISO(groupLocalDate);
 
     // Prevent double execution for the same weekStart
     const existingSnap = await db.collection('assignments')

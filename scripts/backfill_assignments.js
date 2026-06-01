@@ -29,16 +29,16 @@ const firebaseConfig = {
 
 function getMondayISO(date) {
   const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  d.setDate(diff);
+  const day = d.getUTCDay();
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
   return d.toISOString().split('T')[0];
 }
 
 function getDateForWeekday(weekStartStr, dayIndex) {
-  const d = new Date(weekStartStr);
+  const d = new Date(`${weekStartStr}T00:00:00.000Z`);
   const offset = dayIndex === 0 ? 6 : dayIndex - 1;
-  d.setDate(d.getDate() + offset);
+  d.setUTCDate(d.getUTCDate() + offset);
   return d.toISOString().split('T')[0];
 }
 
