@@ -1,20 +1,18 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Alert, ActivityIndicator,
+  ActivityIndicator, Switch
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { AppAlert } from '../../utils/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  doc, updateDoc, getDoc, Timestamp,
-} from 'firebase/firestore';
 import * as Clipboard from 'expo-clipboard';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { useAppTheme } from '../../contexts/ThemeContext';
 
 const ALL_HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0') + ':00');
-
 
 const TIMEZONES = [
   { iana: 'Pacific/Midway', label: 'UTC−11  Midway Island' },
@@ -60,32 +58,81 @@ export default function SettingsScreen() {
 
   const isAdult = user?.type === 'Adult';
 
+  const [autoDistribution, setAutoDistribution] = useState(true);
+  const [loadingGroup, setLoadingGroup] = useState(false);
+
+  const fetchGroupSettings = useCallback(async () => {
+    if (!user?.groupId) return;
+    setLoadingGroup(true);
+    try {
+      const { data, error } = await supabase
+        .from('groups')
+        .select('auto_distribution')
+        .eq('id', user.groupId)
+        .single();
+      
+      if (error) throw error;
+      if (data) {
+        setAutoDistribution(data.auto_distribution);
+      }
+    } catch (e) {
+      console.error('Error fetching group settings:', e);
+    } finally {
+      setLoadingGroup(false);
+    }
+  }, [user?.groupId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchGroupSettings();
+    }, [fetchGroupSettings])
+  );
+
+  const handleToggleAutoDistribution = async (value: boolean) => {
+    if (!user?.groupId) return;
+    setAutoDistribution(value);
+    try {
+      const { error } = await supabase
+        .from('groups')
+        .update({ auto_distribution: value })
+        .eq('id', user.groupId);
+      
+      if (error) throw error;
+    } catch (e) {
+      setAutoDistribution(!value); // revert on failure
+      AppAlert.alert('Error', 'Could not update weekly task mixing setting');
+    }
+  };
+
   const generateInviteLink = async () => {
     if (!user?.groupId) return;
     setGeneratingLink(true);
     try {
-      const token = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      const token = Array.from({ length: 8 }, () =>
+        CHARS[Math.floor(Math.random() * CHARS.length)]
+      ).join('');
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-      const groupRef = doc(db, 'groups', user.groupId);
-      const groupSnap = await getDoc(groupRef);
-      const existing = groupSnap.data()?.inviteLinks ?? [];
+      const { error } = await supabase
+        .from('invite_links')
+        .insert({
+          token,
+          group_id: user.groupId,
+          expires_at: expiresAt.toISOString(),
+          used_by: [],
+        });
 
-      await updateDoc(groupRef, {
-        inviteLinks: [
-          ...existing,
-          { token, createdAt: Timestamp.now(), expiresAt: Timestamp.fromDate(expiresAt), usedBy: [] },
-        ],
-      });
+      if (error) throw error;
 
       await Clipboard.setStringAsync(token);
-      Alert.alert(
+      AppAlert.alert(
         'Invite Link Generated',
         `Code: ${token}\n\nCopied to clipboard. Valid for 24 hours.`,
         [{ text: 'OK' }]
       );
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not generate link');
+      AppAlert.alert('Error', e?.message ?? 'Could not generate link');
     } finally {
       setGeneratingLink(false);
     }
@@ -95,25 +142,33 @@ export default function SettingsScreen() {
     if (!user) return;
     setSavingTime(true);
     try {
-      await updateDoc(doc(db, 'users', user.id), { notificationTime: time });
+      const { error } = await supabase
+        .from('users')
+        .update({ notification_time: time })
+        .eq('id', user.id);
+      
+      if (error) throw error;
       await refreshUser();
     } catch (e) {
-      Alert.alert('Error', 'Could not update notification time');
+      AppAlert.alert('Error', 'Could not update notification time');
     } finally {
       setSavingTime(false);
     }
   };
 
-
-
   const handleTimezone = async (iana: string) => {
     if (!user) return;
     setSavingTimezone(true);
     try {
-      await updateDoc(doc(db, 'users', user.id), { timezone: iana });
+      const { error } = await supabase
+        .from('users')
+        .update({ timezone: iana })
+        .eq('id', user.id);
+
+      if (error) throw error;
       await refreshUser();
     } catch (e) {
-      Alert.alert('Error', 'Could not update timezone');
+      AppAlert.alert('Error', 'Could not update timezone');
     } finally {
       setSavingTimezone(false);
     }
@@ -124,7 +179,7 @@ export default function SettingsScreen() {
   const currentTzLabel = TIMEZONES.find((t) => t.iana === currentTz)?.label ?? currentTz;
 
   const handleLeaveGroup = () => {
-    Alert.alert(
+    AppAlert.alert(
       'Leave Group',
       'Are you sure you want to leave this group?',
       [
@@ -133,8 +188,17 @@ export default function SettingsScreen() {
           text: 'Leave', style: 'destructive',
           onPress: async () => {
             if (!user) return;
-            await updateDoc(doc(db, 'users', user.id), { groupId: null });
-            await refreshUser();
+            try {
+              const { error } = await supabase
+                .from('users')
+                .update({ group_id: null })
+                .eq('id', user.id);
+
+              if (error) throw error;
+              await refreshUser();
+            } catch (e) {
+              AppAlert.alert('Error', 'Could not leave group');
+            }
           },
         },
       ]
@@ -142,7 +206,7 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure?', [
+    AppAlert.alert('Sign Out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: signOut },
     ]);
@@ -278,6 +342,31 @@ export default function SettingsScreen() {
         </View>
 
 
+        {/* Adult-only: Group Settings */}
+        {isAdult && user?.groupId && (
+          <View style={styles.section}>
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1, paddingRight: 16 }}>
+                <Text style={styles.sectionTitle}>Group Settings</Text>
+                <Text style={[styles.sectionDesc, { marginBottom: 0 }]}>
+                  Automatically rotate tasks weekly based on member capacity.
+                </Text>
+              </View>
+              {loadingGroup ? (
+                <ActivityIndicator color={Colors.primary} size="small" />
+              ) : (
+                <Switch
+                  value={autoDistribution}
+                  onValueChange={handleToggleAutoDistribution}
+                  trackColor={{ true: Colors.primary, false: Colors.bgInput }}
+                  thumbColor={autoDistribution ? Colors.primaryLight : Colors.textMuted}
+                />
+              )}
+            </View>
+          </View>
+        )}
+
+
         {/* Adult-only: Invite Members */}
         {isAdult && (
           <View style={styles.section}>
@@ -335,7 +424,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.version}>Nest v1.0.0</Text>
+
       </ScrollView>
     </View>
   );

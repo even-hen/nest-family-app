@@ -1,6 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -15,9 +13,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { Assignment, Notification } from '../../types';
 import { getMondayISO, getTodayISO, getYesterdayISO } from '../../utils/date';
+import { mapAssignment, mapUser } from '../../utils/supabaseMappers';
 
 const TYPE_ICONS: Record<string, string> = {
   daily_summary: 'clipboard-outline',
@@ -31,187 +30,71 @@ export default function NotificationsScreen() {
   const styles = React.useMemo(() => getStyles(Colors, insets), [Colors, insets]);
   const { user, setUnreadCount } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [readIds, setReadIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Load local read IDs from AsyncStorage
-  const loadReadStates = useCallback(async () => {
-    if (!user?.id) return;
-    try {
-      const stored = await AsyncStorage.getItem(`read_notifs_${user.id}`);
-      if (stored) {
-        setReadIds(JSON.parse(stored));
-      }
-    } catch (e) {
-      console.error('Error loading read states:', e);
-    }
-  }, [user?.id]);
-
   const loadNotifications = useCallback(async () => {
     if (!user?.id || !user.groupId) return;
 
     try {
-      const todayISO = getTodayISO();
-      const yesterdayISO = getYesterdayISO();
-      const lastWeekStart = getMondayISO(new Date(Date.now() - 7 * 86400000));
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
 
-      // Fetch user assignments and group users
-      const [assignmentsSnap, groupUsersSnap] = await Promise.all([
-        getDocs(
-          query(
-            collection(db, 'assignments'),
-            where('assignedTo', '==', user.id)
-          )
-        ),
-        getDocs(
-          query(
-            collection(db, 'users'),
-            where('groupId', '==', user.groupId)
-          )
-        ),
-      ]);
+      if (error) throw error;
 
-      const userAssignments = assignmentsSnap.docs.map(
-        (doc) => ({ id: doc.id, ...doc.data() } as Assignment)
-      );
+      const mappedList: Notification[] = (data || []).map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        groupId: row.group_id,
+        title: row.title,
+        body: row.body,
+        type: row.type,
+        isRead: row.is_read,
+        createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+      })).reverse();
 
-      const userNames: Record<string, string> = {};
-      groupUsersSnap.docs.forEach((doc) => {
-        userNames[doc.id] = doc.data().name;
-      });
-
-      // Calculate exact scheduled publication timestamps based on user's preferred notificationTime
-      const [hourStr, minuteStr] = (user.notificationTime || '09:00').split(':');
-      const targetHour = parseInt(hourStr, 10) || 9;
-      const targetMinute = parseInt(minuteStr, 10) || 0;
-
-      const getPublishTimeForDate = (baseDate: Date) => {
-        const d = new Date(baseDate);
-        d.setHours(targetHour, targetMinute, 0, 0);
-        return d.getTime() > Date.now() ? new Date() : d;
-      };
-
-      const parseLocalDateString = (isoStr: string): Date => {
-        const [year, month, day] = isoStr.split('-').map(Number);
-        return new Date(year, month - 1, day);
-      };
-
-      const generatedNotifs: Notification[] = [];
-
-      // 1. Missed Yesterday
-      const yesterdayMissed = userAssignments.filter(
-        (a) => a.date === yesterdayISO && (a.status === 'skipped' || a.status === 'pending')
-      );
-      if (yesterdayMissed.length > 0) {
-        const taskBullets = yesterdayMissed
-          .slice(0, 3)
-          .map((a) => `• ${a.title}`)
-          .join('\n');
-        const truncationSuffix = yesterdayMissed.length > 3 ? `\n• and ${yesterdayMissed.length - 3} more…` : '';
-
-        generatedNotifs.push({
-          id: `missed_yesterday_${yesterdayISO}`,
-          userId: user.id,
-          groupId: user.groupId,
-          isRead: false,
-          type: 'missed_task',
-          title: `🕰️ Yesterday's Missed Tasks (${yesterdayMissed.length})`,
-          body: `You didn't complete your tasks yesterday:\n${taskBullets}${truncationSuffix}\n\nPlease remember that consistency helps the whole family! Try to catch up today if you can.`,
-          createdAt: getPublishTimeForDate(new Date()),
-        });
-      }
-
-      // 2. Daily Summary
-      const todayPending = userAssignments.filter(
-        (a) => a.date === todayISO && a.status === 'pending'
-      );
-      if (todayPending.length > 0) {
-        const taskBullets = todayPending
-          .slice(0, 5)
-          .map((a) => `• ${a.title}`)
-          .join('\n');
-        const truncationSuffix = todayPending.length > 5 ? `\n• and ${todayPending.length - 5} more…` : '';
-
-        generatedNotifs.push({
-          id: `daily_summary_${todayISO}`,
-          userId: user.id,
-          groupId: user.groupId,
-          isRead: false,
-          type: 'daily_summary',
-          title: `📋 Today's Tasks (${todayPending.length})`,
-          body: `You have ${todayPending.length} task(s) pending today:\n${taskBullets}${truncationSuffix}`,
-          createdAt: new Date(getPublishTimeForDate(new Date()).getTime() + 1000), // Slightly offset from missed tasks
-        });
-      }
-
-      // 3. Weekly Missed Tasks Report (Adults only)
-      if (user.type === 'Adult') {
-        const skippedSnap = await getDocs(
-          query(
-            collection(db, 'assignments'),
-            where('groupId', '==', user.groupId),
-            where('weekStart', '==', lastWeekStart),
-            where('status', '==', 'skipped')
-          )
-        );
-
-        const skippedTasks = skippedSnap.docs.map((doc) => doc.data() as Assignment);
-
-        if (skippedTasks.length > 0) {
-          const skippedByUser: Record<string, string[]> = {};
-          skippedTasks.forEach((t) => {
-            const uid = t.assignedTo;
-            if (uid) {
-              if (!skippedByUser[uid]) skippedByUser[uid] = [];
-              skippedByUser[uid].push(t.title);
-            }
-          });
-
-          if (Object.keys(skippedByUser).length > 0) {
-            const reportLines = Object.entries(skippedByUser)
-              .map(([uid, titles]) => `• ${userNames[uid] ?? uid}: ${titles.join(', ')}`)
-              .join('\n');
-
-            const currentWeekMondayStr = getMondayISO(new Date());
-            const currentWeekMonday = parseLocalDateString(currentWeekMondayStr);
-
-            generatedNotifs.push({
-              id: `weekly_report_${lastWeekStart}`,
-              userId: user.id,
-              groupId: user.groupId,
-              isRead: false,
-              type: 'weekly_report',
-              title: '📊 Weekly Missed Tasks Report',
-              body: `Last week some tasks were skipped:\n${reportLines}\n\nTip: Consider reducing task complexity or adjusting capacity for members who frequently skip.`,
-              createdAt: getPublishTimeForDate(currentWeekMonday),
-            });
-          }
-        }
-      }
-
-      const allNotifications = [...generatedNotifs];
-
-      // Sort oldest first (ascending order)
-      allNotifications.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-
-      setNotifications(allNotifications);
+      setNotifications(mappedList);
     } catch (e) {
-      console.error('Error fetching/generating notifications:', e);
+      console.error('Error fetching notifications:', e);
     }
   }, [user]);
 
-  const initData = useCallback(async () => {
-    await Promise.all([loadReadStates(), loadNotifications()]);
-  }, [loadReadStates, loadNotifications]);
+  // Set up real-time postgres change subscription for instant notifications
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`user_notifications_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, loadNotifications]);
 
   useFocusEffect(
     useCallback(() => {
       setHasScrolled(false);
-      initData().finally(() => setLoading(false));
-    }, [initData])
+      loadNotifications().finally(() => setLoading(false));
+    }, [loadNotifications])
   );
 
   const onRefresh = async () => {
@@ -224,9 +107,16 @@ export default function NotificationsScreen() {
   const markRead = async (id: string) => {
     if (!user?.id) return;
     try {
-      const updated = [...readIds, id];
-      setReadIds(updated);
-      await AsyncStorage.setItem(`read_notifs_${user.id}`, JSON.stringify(updated));
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
     } catch (e) {
       console.error('Error marking as read:', e);
     }
@@ -235,17 +125,26 @@ export default function NotificationsScreen() {
   const markAllRead = async () => {
     if (!user?.id) return;
     try {
-      const unread = notifications.filter((n) => !readIds.includes(n.id));
+      const unread = notifications.filter((n) => !n.isRead);
       if (unread.length === 0) return;
-      const updated = [...readIds, ...unread.map((n) => n.id)];
-      setReadIds(updated);
-      await AsyncStorage.setItem(`read_notifs_${user.id}`, JSON.stringify(updated));
+
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+
+      if (error) throw error;
+
+      setNotifications((prev) =>
+        prev.map((n) => (!n.isRead ? { ...n, isRead: true } : n))
+      );
     } catch (e) {
       console.error('Error marking all as read:', e);
     }
   };
 
-  const unreadCount = notifications.filter((n) => !readIds.includes(n.id)).length;
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
   useEffect(() => {
     setUnreadCount(unreadCount);
@@ -289,7 +188,7 @@ export default function NotificationsScreen() {
         )}
 
         {notifications.map((n) => {
-          const isRead = readIds.includes(n.id);
+          const isRead = n.isRead;
           return (
             <TouchableOpacity
               key={n.id}

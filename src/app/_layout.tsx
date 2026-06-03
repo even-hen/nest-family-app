@@ -30,6 +30,10 @@ export default function RootLayout() {
     ...Ionicons.font,
     'Ionicons': require('../../assets/fonts/Ionicons.ttf'),
     'ionicons': require('../../assets/fonts/Ionicons.ttf'),
+    'Outfit-Regular': require('../../assets/fonts/Outfit-Regular.ttf'),
+    'Outfit-Medium': require('../../assets/fonts/Outfit-Medium.ttf'),
+    'Outfit-SemiBold': require('../../assets/fonts/Outfit-SemiBold.ttf'),
+    'Outfit-Bold': require('../../assets/fonts/Outfit-Bold.ttf'),
   });
 
   useEffect(() => {

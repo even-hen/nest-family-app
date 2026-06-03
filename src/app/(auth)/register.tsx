@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
   PanResponder,
 } from 'react-native';
+import { AppAlert } from '../../utils/alert';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
@@ -21,6 +22,8 @@ const getCapacityColor = (val: number, Colors: ThemeColors) => {
   if (val <= 70) return Colors.success;
   return Colors.primary;
 };
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function RegisterScreen() {
   const { Colors } = useAppTheme();
@@ -60,15 +63,19 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (!email.trim() || !password.trim() || !name.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+      AppAlert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    if (!EMAIL_REGEX.test(email.trim())) {
+      AppAlert.alert('Error', 'Please enter a valid email address');
       return;
     }
     if (name.trim().length < 2) {
-      Alert.alert('Error', 'Name must be at least 2 characters');
+      AppAlert.alert('Error', 'Name must be at least 2 characters');
       return;
     }
     if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
+      AppAlert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
     setLoading(true);
@@ -76,7 +83,7 @@ export default function RegisterScreen() {
       await signUp(email.trim(), password, name.trim(), type, resource);
       router.replace('/(auth)/setup-group');
     } catch (e: any) {
-      Alert.alert('Registration Failed', e?.message ?? 'Something went wrong');
+      AppAlert.alert('Registration Failed', e?.message ?? 'Something went wrong');
     } finally {
       setLoading(false);
     }

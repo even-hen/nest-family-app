@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export const darkColors = {
   // Primary brand - deep indigo/violet
   primary: '#7C5CFC',
@@ -51,9 +53,10 @@ export const darkColors = {
 };
 
 export const Fonts = {
-  regular: 'System',
-  medium: 'System',
-  bold: 'System',
+  regular: Platform.OS === 'web' ? 'Outfit, System' : 'Outfit-Regular',
+  medium: Platform.OS === 'web' ? 'Outfit, System' : 'Outfit-Medium',
+  semibold: Platform.OS === 'web' ? 'Outfit, System' : 'Outfit-SemiBold',
+  bold: Platform.OS === 'web' ? 'Outfit, System' : 'Outfit-Bold',
 };
 
 export const Spacing = {

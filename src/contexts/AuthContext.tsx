@@ -1,30 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-  sendPasswordResetEmail,
-} from 'firebase/auth';
-import {
-  doc,
-  setDoc,
-  getDoc,
-  serverTimestamp,
-  collection,
-  query,
-  where,
-  getDocs,
-} from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { auth, db } from '../lib/firebase';
-import { User, UserType } from '../types';
 import { syncLocalNotifications } from '../lib/notifications';
-import { getMondayISO } from '../utils/date';
+import { supabase } from '../lib/supabase';
+import { User, UserType } from '../types';
+import { mapUser } from '../utils/supabaseMappers';
 
 interface AuthContextType {
   user: User | null;
-  firebaseUid: string | null;
+  authUid: string | null;
   loading: boolean;
   unreadCount: number;
   setUnreadCount: (count: number) => void;
@@ -45,116 +27,97 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [firebaseUid, setFirebaseUid] = useState<string | null>(null);
+  const [authUid, setAuthUid] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const checkUnreadNotifications = async (uid: string, groupId: string | null, userType: UserType) => {
+  const checkUnreadNotifications = async (uid: string, groupId: string | null) => {
     if (!groupId) return;
     try {
-      const todayISO = new Date().toISOString().split('T')[0];
-      
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayISO = yesterday.toISOString().split('T')[0];
-      
-      const lastWeekStart = getMondayISO(new Date(Date.now() - 7 * 86400000));
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', uid)
+        .eq('is_read', false);
 
-      const assignmentsSnap = await getDocs(
-        query(
-          collection(db, 'assignments'),
-          where('assignedTo', '==', uid),
-          where('status', '==', 'pending')
-        )
-      );
-
-      const storedRead = await AsyncStorage.getItem(`read_notifs_${uid}`);
-      const readIds = storedRead ? JSON.parse(storedRead) : [];
-
-      let unread = 0;
-
-      // 1. Missed Yesterday
-      const yesterdayMissed = assignmentsSnap.docs.filter((d) => d.data().date === yesterdayISO);
-      if (yesterdayMissed.length > 0 && !readIds.includes(`missed_yesterday_${yesterdayISO}`)) {
-        unread++;
-      }
-
-      // 2. Daily Summary
-      const todayPending = assignmentsSnap.docs.filter((d) => d.data().date === todayISO);
-      if (todayPending.length > 0 && !readIds.includes(`daily_summary_${todayISO}`)) {
-        unread++;
-      }
-
-      // 3. Weekly Missed Tasks Report (Adults only)
-      if (userType === 'Adult') {
-        const skippedSnap = await getDocs(
-          query(
-            collection(db, 'assignments'),
-            where('groupId', '==', groupId),
-            where('weekStart', '==', lastWeekStart),
-            where('status', '==', 'skipped')
-          )
-        );
-        if (!skippedSnap.empty && !readIds.includes(`weekly_report_${lastWeekStart}`)) {
-          unread++;
-        }
-      }
-
-      setUnreadCount(unread);
+      if (error) throw error;
+      setUnreadCount(count || 0);
     } catch (e) {
       console.error('Error checking unread notifications:', e);
     }
   };
 
   const fetchUser = async (uid: string) => {
-    const snap = await getDoc(doc(db, 'users', uid));
-    if (snap.exists()) {
-      const data = snap.data();
-      const timezone = data.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const notificationTime = data.notificationTime ?? '09:00';
-      const type = data.type as UserType;
-      const groupId = data.groupId ?? null;
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', uid)
+        .single();
 
-      setUser({
-        id: uid,
-        email: data.email,
-        name: data.name,
-        type,
-        resource: data.resource,
-        groupId,
-        timezone,
-        notificationTime,
-        language: data.language ?? 'en',
-        theme: data.theme ?? 'light',
-        createdAt: data.createdAt?.toDate?.() ?? new Date(),
-      });
+      if (userError) {
+        if (userError.code === 'PGRST116') {
+          // Gracefully return if the public.users profile row has not been inserted yet
+          // (occurs during the signup process before insert completes)
+          return;
+        }
+        throw userError;
+      }
 
-      // Synchronize local notifications on the device
-      syncLocalNotifications(uid, groupId, type, notificationTime);
+      if (userData) {
+        const mappedUser = mapUser(userData);
+        setUser(mappedUser);
 
-      // Fetch unread count on app start
-      checkUnreadNotifications(uid, groupId, type);
+        // Synchronize local notifications on the device
+        syncLocalNotifications(mappedUser.id, mappedUser.groupId, mappedUser.type, mappedUser.notificationTime);
+
+        // Fetch unread count on app start
+        checkUnreadNotifications(mappedUser.id, mappedUser.groupId);
+      }
+    } catch (e) {
+      console.error('Error fetching user metadata:', e);
     }
   };
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        setFirebaseUid(fbUser.uid);
-        await fetchUser(fbUser.uid);
+    // 1. Check initial active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setAuthUid(session.user.id);
+        fetchUser(session.user.id).finally(() => setLoading(false));
       } else {
-        setFirebaseUid(null);
+        setAuthUid(null);
+        setUser(null);
+        setLoading(false);
+      }
+    });
+
+    // 2. Subscribe to auth state updates
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setAuthUid(session.user.id);
+        await fetchUser(session.user.id);
+      } else {
+        setAuthUid(null);
         setUser(null);
       }
       setLoading(false);
     });
-    return unsub;
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    setFirebaseUid(cred.user.uid);
-    await fetchUser(cred.user.uid);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error('Sign in failed: No user returned');
+    setAuthUid(data.user.id);
+    await fetchUser(data.user.id);
   };
 
   const signUp = async (
@@ -164,35 +127,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     type: UserType,
     resource: number
   ) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    const uid = cred.user.uid;
-    await setDoc(doc(db, 'users', uid), {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error('Sign up failed: No user created');
+
+    const uid = data.user.id;
+
+    // Create user profile document in public.users table
+    const { error: dbError } = await supabase.from('users').insert({
+      id: uid,
       email,
       name,
       type,
       resource,
-      groupId: null,
+      group_id: null,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      notificationTime: '09:00',
+      notification_time: '09:00',
       language: 'en',
-      createdAt: serverTimestamp(),
     });
+
+    if (dbError) throw dbError;
+
+    setAuthUid(uid);
     await fetchUser(uid);
   };
 
   const signOut = async () => {
-    await firebaseSignOut(auth);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
     setUser(null);
-    setFirebaseUid(null);
+    setAuthUid(null);
   };
 
   const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(auth, email);
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) throw error;
   };
 
   const refreshUser = async () => {
-    if (firebaseUid) {
-      await fetchUser(firebaseUid);
+    if (authUid) {
+      await fetchUser(authUid);
     }
   };
 
@@ -200,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
-        firebaseUid,
+        authUid,
         loading,
         unreadCount,
         setUnreadCount,

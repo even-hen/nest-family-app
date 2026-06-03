@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, ScrollView,
+  ActivityIndicator, ScrollView, Platform,
 } from 'react-native';
+import { AppAlert } from '../../utils/alert';
 import { router } from 'expo-router';
-import {
-  collection, addDoc, doc, updateDoc,
-  getDocs, serverTimestamp, Timestamp,
-} from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { useAppTheme } from '../../contexts/ThemeContext';
@@ -57,44 +54,59 @@ export default function SetupGroupScreen() {
 
   const handleCreate = async () => {
     if (!groupName.trim()) {
-      Alert.alert('Error', 'Please enter a group name');
+      AppAlert.alert('Error', 'Please enter a group name');
       return;
     }
     if (!user) return;
     setLoading(true);
     try {
       // Create group
-      const groupRef = await addDoc(collection(db, 'groups'), {
-        name: groupName.trim(),
-        createdBy: user.id,
-        createdAt: serverTimestamp(),
-        autoDistribution: true,
-        inviteLinks: [],
-      });
+      const { data: newGroup, error: groupErr } = await supabase
+        .from('groups')
+        .insert({
+          name: groupName.trim(),
+          created_by: user.id,
+          auto_distribution: true,
+        })
+        .select()
+        .single();
+
+      if (groupErr) throw groupErr;
+      if (!newGroup) throw new Error('Could not retrieve new group ID');
+
+      const groupId = newGroup.id;
 
       // Assign user to group
-      await updateDoc(doc(db, 'users', user.id), { groupId: groupRef.id });
+      const { error: userErr } = await supabase
+        .from('users')
+        .update({ group_id: groupId })
+        .eq('id', user.id);
+
+      if (userErr) throw userErr;
 
       // Create default tasks
-      for (const t of defaultTasks) {
-        await addDoc(collection(db, 'tasks'), {
-          groupId: groupRef.id,
-          title: t.title,
-          complexity: t.complexity,
-          weekDays: t.weekDays,
-          availableFor: t.availableFor,
-          assignedTo: null,
-          auto: true,
-          isActive: true,
-          createdBy: user.id,
-          createdAt: serverTimestamp(),
-        });
-      }
+      const tasksToInsert = defaultTasks.map((t) => ({
+        group_id: groupId,
+        title: t.title,
+        complexity: t.complexity,
+        week_days: t.weekDays,
+        available_for: t.availableFor,
+        assigned_to: null,
+        auto: true,
+        is_active: true,
+        created_by: user.id,
+      }));
+
+      const { error: tasksErr } = await supabase
+        .from('tasks')
+        .insert(tasksToInsert);
+
+      if (tasksErr) throw tasksErr;
 
       await refreshUser();
       router.replace('/(tabs)/assignments');
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not create group');
+      AppAlert.alert('Error', e?.message ?? 'Could not create group');
     } finally {
       setLoading(false);
     }
@@ -102,43 +114,55 @@ export default function SetupGroupScreen() {
 
   const handleJoin = async () => {
     if (!inviteToken.trim()) {
-      Alert.alert('Error', 'Please enter an invite code');
+      AppAlert.alert('Error', 'Please enter an invite code');
       return;
     }
     if (!user) return;
     setLoading(true);
     try {
-      // Find group with this invite token
-      const groupsSnap = await getDocs(collection(db, 'groups'));
-      let foundGroupId: string | null = null;
+      // Find invite link with this token
+      const { data: inviteLink, error: linkErr } = await supabase
+        .from('invite_links')
+        .select('*')
+        .eq('token', inviteToken.trim())
+        .single();
 
-      for (const groupDoc of groupsSnap.docs) {
-        const data = groupDoc.data();
-        const links: any[] = data.inviteLinks ?? [];
-        const link = links.find((l: any) => l.token === inviteToken.trim());
-        if (link) {
-          const expiresAt: Timestamp = link.expiresAt;
-          if (expiresAt.toDate() < new Date()) {
-            Alert.alert('Error', 'This invite link has expired');
-            setLoading(false);
-            return;
-          }
-          foundGroupId = groupDoc.id;
-          break;
-        }
-      }
-
-      if (!foundGroupId) {
-        Alert.alert('Error', 'Invalid invite code');
+      if (linkErr || !inviteLink) {
+        AppAlert.alert('Error', 'Invalid invite code');
         setLoading(false);
         return;
       }
 
-      await updateDoc(doc(db, 'users', user.id), { groupId: foundGroupId });
+      const expiresAt = new Date(inviteLink.expires_at);
+      if (expiresAt < new Date()) {
+        AppAlert.alert('Error', 'This invite link has expired');
+        setLoading(false);
+        return;
+      }
+
+      const foundGroupId = inviteLink.group_id;
+
+      // Assign user to group
+      const { error: userErr } = await supabase
+        .from('users')
+        .update({ group_id: foundGroupId })
+        .eq('id', user.id);
+
+      if (userErr) throw userErr;
+
+      // Update used_by array in invite_links
+      const usedBy = inviteLink.used_by || [];
+      if (!usedBy.includes(user.id)) {
+        await supabase
+          .from('invite_links')
+          .update({ used_by: [...usedBy, user.id] })
+          .eq('token', inviteToken.trim());
+      }
+
       await refreshUser();
       router.replace('/(tabs)/assignments');
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not join group');
+      AppAlert.alert('Error', e?.message ?? 'Could not join group');
     } finally {
       setLoading(false);
     }

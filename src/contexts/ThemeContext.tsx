@@ -1,9 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { darkColors, lightColors, ThemeColors } from '../constants/colors';
-
 
 export type ThemeType = 'light' | 'dark';
 
@@ -35,7 +33,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setThemeState(newTheme);
     if (user) {
       try {
-        await updateDoc(doc(db, 'users', user.id), { theme: newTheme });
+        const { error } = await supabase
+          .from('users')
+          .update({ theme: newTheme })
+          .eq('id', user.id);
+        
+        if (error) throw error;
       } catch (e) {
         console.error('Failed to update theme in DB', e);
       }

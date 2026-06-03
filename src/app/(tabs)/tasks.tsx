@@ -1,21 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Platform,
   RefreshControl,
@@ -27,17 +14,19 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { AppAlert } from '../../utils/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { ALL_WEEK_DAYS, DAYS_OF_WEEK, USER_TYPES } from '../../constants/domain';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { autoDistributeTasks } from '../../lib/distribution';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { syncLocalNotifications } from '../../lib/notifications';
 import { Assignment, Task, User, UserType } from '../../types';
 import { getTypeColor } from '../../utils/colors';
 import { getMondayISO } from '../../utils/date';
+import { mapTask, mapUser, mapAssignment } from '../../utils/supabaseMappers';
 
 function TaskCard({
   task, users, onEdit, canEdit,
@@ -136,44 +125,53 @@ export default function TasksScreen() {
 
   const loadData = useCallback(async () => {
     if (!user?.groupId) return;
-    const [tasksSnap, usersSnap] = await Promise.all([
-      getDocs(query(collection(db, 'tasks'), where('groupId', '==', user.groupId))),
-      getDocs(query(collection(db, 'users'), where('groupId', '==', user.groupId))),
-    ]);
-    const nameMap: Record<string, string> = {};
-    const list: { id: string; name: string }[] = [];
-    const fullList: User[] = [];
-    usersSnap.docs.forEach((d) => {
-      const uData = { id: d.id, ...d.data() } as User;
-      nameMap[d.id] = uData.name;
-      list.push({ id: d.id, name: uData.name });
-      fullList.push(uData);
-    });
-    setGroupUsers(nameMap);
-    setUsersList(list);
-    setFullUsersList(fullList);
+    try {
+      const [tasksRes, usersRes] = await Promise.all([
+        supabase.from('tasks').select('*').eq('group_id', user.groupId),
+        supabase.from('users').select('*').eq('group_id', user.groupId),
+      ]);
 
-    const loadedTasks = tasksSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
-    loadedTasks.sort((a, b) => {
-      // 1. Active tasks at the top, deactivated at the bottom
-      if (a.isActive !== b.isActive) {
-        return a.isActive ? -1 : 1;
-      }
+      if (tasksRes.error) throw tasksRes.error;
+      if (usersRes.error) throw usersRes.error;
 
-      // 2. Sort descending by total points (complexity * weekDays count)
-      const aDays = a.weekDays ? a.weekDays.length : 0;
-      const bDays = b.weekDays ? b.weekDays.length : 0;
-      const aPoints = a.complexity * aDays;
-      const bPoints = b.complexity * bDays;
+      const nameMap: Record<string, string> = {};
+      const list: { id: string; name: string }[] = [];
+      const fullList: User[] = [];
+      
+      (usersRes.data || []).forEach((row) => {
+        const uData = mapUser(row);
+        nameMap[uData.id] = uData.name;
+        list.push({ id: uData.id, name: uData.name });
+        fullList.push(uData);
+      });
+      setGroupUsers(nameMap);
+      setUsersList(list);
+      setFullUsersList(fullList);
 
-      if (bPoints !== aPoints) {
-        return bPoints - aPoints; // Descending
-      }
+      const loadedTasks = (tasksRes.data || []).map(mapTask);
+      loadedTasks.sort((a, b) => {
+        // 1. Active tasks at the top, deactivated at the bottom
+        if (a.isActive !== b.isActive) {
+          return a.isActive ? -1 : 1;
+        }
 
-      // 3. Fallback to title alphabetically
-      return a.title.localeCompare(b.title);
-    });
-    setTasks(loadedTasks);
+        // 2. Sort descending by total points (complexity * weekDays count)
+        const aDays = a.weekDays ? a.weekDays.length : 0;
+        const bDays = b.weekDays ? b.weekDays.length : 0;
+        const aPoints = a.complexity * aDays;
+        const bPoints = b.complexity * bDays;
+
+        if (bPoints !== aPoints) {
+          return bPoints - aPoints; // Descending
+        }
+
+        // 3. Fallback to title alphabetically
+        return a.title.localeCompare(b.title);
+      });
+      setTasks(loadedTasks);
+    } catch (e) {
+      console.error(e);
+    }
   }, [user?.groupId]);
 
   useFocusEffect(
@@ -197,9 +195,9 @@ export default function TasksScreen() {
   };
 
   const handleSave = async () => {
-    if (!form.title.trim()) { Alert.alert('Error', 'Title is required'); return; }
+    if (!form.title.trim()) { AppAlert.alert('Error', 'Title is required'); return; }
     const c = parseInt(form.complexity, 10);
-    if (isNaN(c) || c < 1 || c > 100) { Alert.alert('Error', 'Complexity must be 1–100'); return; }
+    if (isNaN(c) || c < 1 || c > 100) { AppAlert.alert('Error', 'Complexity must be 1–100'); return; }
     if (!user?.groupId) return;
     setSaving(true);
     try {
@@ -244,39 +242,47 @@ export default function TasksScreen() {
         title: form.title.trim(),
         emoji: form.emoji,
         complexity: c,
-        weekDays: activeDays,
-        availableFor: form.availableFor.length === 0 ? [...USER_TYPES] : form.availableFor,
-        assignedTo: finalAssignedTo,
+        week_days: activeDays,
+        available_for: form.availableFor.length === 0 ? [...USER_TYPES] : form.availableFor,
+        assigned_to: finalAssignedTo,
         auto,
-        isActive: form.isActive,
+        is_active: form.isActive,
       };
 
       let savedTaskId = '';
       if (editingTask) {
         savedTaskId = editingTask.id;
-        await updateDoc(doc(db, 'tasks', editingTask.id), data);
+        const { error } = await supabase
+          .from('tasks')
+          .update(data)
+          .eq('id', editingTask.id);
+        if (error) throw error;
       } else {
-        const docRef = await addDoc(collection(db, 'tasks'), {
-          ...data,
-          groupId: user.groupId,
-          createdBy: user.id,
-          createdAt: serverTimestamp(),
-        });
-        savedTaskId = docRef.id;
+        const { data: newDbTask, error } = await supabase
+          .from('tasks')
+          .insert({
+            ...data,
+            group_id: user.groupId,
+            created_by: user.id,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        if (!newDbTask) throw new Error('Failed to create task record');
+        savedTaskId = newDbTask.id;
       }
 
       // Sync weekly assignments for today and future days
       const weekStartStr = getMondayISO(new Date());
-      const assignmentsSnap = await getDocs(
-        query(
-          collection(db, 'assignments'),
-          where('taskId', '==', savedTaskId),
-          where('weekStart', '==', weekStartStr)
-        )
-      );
-      const existingAssignments = assignmentsSnap.docs.map(
-        (d) => ({ id: d.id, ...d.data() } as Assignment)
-      );
+      const { data: assignmentsData, error: assErr } = await supabase
+        .from('assignments')
+        .select('*')
+        .eq('task_id', savedTaskId)
+        .eq('week_start', weekStartStr);
+
+      if (assErr) throw assErr;
+
+      const existingAssignments = (assignmentsData || []).map(mapAssignment);
 
       const todayDayIndex = new Date().getDay();
       const getWeekDayOrderIndex = (idx: number) => (idx === 0 ? 6 : idx - 1);
@@ -301,29 +307,35 @@ export default function TasksScreen() {
             if (existing) {
               // Update only pending assignments
               if (existing.status === 'pending') {
-                await updateDoc(doc(db, 'assignments', existing.id), {
-                  assignedTo: finalAssignedTo,
-                  title: form.title.trim(),
-                  complexity: c,
-                  weekDays: activeDays,
-                });
+                const { error } = await supabase
+                  .from('assignments')
+                  .update({
+                    assigned_to: finalAssignedTo,
+                    title: form.title.trim(),
+                    complexity: c,
+                    week_days: activeDays,
+                  })
+                  .eq('id', existing.id);
+                if (error) throw error;
               }
             } else {
               // Create new assignment
-              await addDoc(collection(db, 'assignments'), {
-                taskId: savedTaskId,
-                groupId: user.groupId,
-                title: form.title.trim(),
-                complexity: c,
-                weekDays: activeDays,
-                assignedTo: finalAssignedTo,
-                status: 'pending',
-                weekStart: weekStartStr,
-                date: dateISO,
-                doneAt: null,
-                skippedAt: null,
-                createdAt: serverTimestamp(),
-              });
+              const { error } = await supabase
+                .from('assignments')
+                .insert({
+                  task_id: savedTaskId,
+                  group_id: user.groupId,
+                  title: form.title.trim(),
+                  complexity: c,
+                  week_days: activeDays,
+                  assigned_to: finalAssignedTo,
+                  status: 'pending',
+                  week_start: weekStartStr,
+                  date: dateISO,
+                  done_at: null,
+                  skipped_at: null,
+                });
+              if (error) throw error;
             }
           }
         }
@@ -335,7 +347,11 @@ export default function TasksScreen() {
           const isNotActiveAnymore = !activeDays.includes(dayIdx);
 
           if (isTodayOrFuture && isNotActiveAnymore && existing.status === 'pending') {
-            await deleteDoc(doc(db, 'assignments', existing.id));
+            const { error } = await supabase
+              .from('assignments')
+              .delete()
+              .eq('id', existing.id);
+            if (error) throw error;
           }
         }
       } else {
@@ -344,7 +360,11 @@ export default function TasksScreen() {
           const dayIdx = new Date(existing.date).getDay();
           const isTodayOrFuture = getWeekDayOrderIndex(dayIdx) >= todayOrder;
           if (isTodayOrFuture && existing.status === 'pending') {
-            await deleteDoc(doc(db, 'assignments', existing.id));
+            const { error } = await supabase
+              .from('assignments')
+              .delete()
+              .eq('id', existing.id);
+            if (error) throw error;
           }
         }
       }
@@ -355,36 +375,50 @@ export default function TasksScreen() {
         syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
       }
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not save task');
+      AppAlert.alert('Error', e?.message ?? 'Could not save task');
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Delete Task', 'Are you sure?', [
+    AppAlert.alert('Delete Task', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           try {
-            await deleteDoc(doc(db, 'tasks', id));
+            const { error: delTaskErr } = await supabase
+              .from('tasks')
+              .delete()
+              .eq('id', id);
+
+            if (delTaskErr) throw delTaskErr;
 
             // Delete pending assignments for today/future
             const weekStartStr = getMondayISO(new Date());
             const todayDateISO = new Date().toISOString().split('T')[0];
-            const snap = await getDocs(query(
-              collection(db, 'assignments'),
-              where('taskId', '==', id),
-              where('weekStart', '==', weekStartStr)
-            ));
 
-            const deletePromises = snap.docs
-              .map((d) => ({ id: d.id, ...d.data() } as Assignment))
-              .filter((a) => a.status === 'pending' && a.date >= todayDateISO)
-              .map((a) => deleteDoc(doc(db, 'assignments', a.id)));
+            const { data: assignmentsData, error: assErr } = await supabase
+              .from('assignments')
+              .select('*')
+              .eq('task_id', id)
+              .eq('week_start', weekStartStr);
 
-            await Promise.all(deletePromises);
+            if (assErr) throw assErr;
+
+            const pendingToDelete = (assignmentsData || [])
+              .map(mapAssignment)
+              .filter((a) => a.status === 'pending' && a.date >= todayDateISO);
+
+            if (pendingToDelete.length > 0) {
+               const deleteIds = pendingToDelete.map((a) => a.id);
+               const { error: delAssErr } = await supabase
+                 .from('assignments')
+                 .delete()
+                 .in('id', deleteIds);
+               if (delAssErr) throw delAssErr;
+            }
 
             setTasks((prev) => prev.filter((t) => t.id !== id));
             setModalVisible(false);
@@ -392,7 +426,7 @@ export default function TasksScreen() {
               syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
             }
           } catch (e: any) {
-            Alert.alert('Error', e?.message ?? 'Could not delete task');
+            AppAlert.alert('Error', e?.message ?? 'Could not delete task');
           }
         },
       },
@@ -424,13 +458,16 @@ export default function TasksScreen() {
       setMixing(true);
       try {
         // 1. Fetch latest active tasks and users
-        const [tasksSnap, usersSnap] = await Promise.all([
-          getDocs(query(collection(db, 'tasks'), where('groupId', '==', user.groupId))),
-          getDocs(query(collection(db, 'users'), where('groupId', '==', user.groupId))),
+        const [tasksRes, usersRes] = await Promise.all([
+          supabase.from('tasks').select('*').eq('group_id', user.groupId),
+          supabase.from('users').select('*').eq('group_id', user.groupId),
         ]);
 
-        const fetchedTasks = tasksSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
-        const fetchedUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as User));
+        if (tasksRes.error) throw tasksRes.error;
+        if (usersRes.error) throw usersRes.error;
+
+        const fetchedTasks = (tasksRes.data || []).map(mapTask);
+        const fetchedUsers = (usersRes.data || []).map(mapUser);
 
         const assignableUsers = fetchedUsers.map((u) => ({
           id: u.id,
@@ -441,23 +478,17 @@ export default function TasksScreen() {
         // 2. Run distribution
         const { assignments: distResult } = autoDistributeTasks(fetchedTasks, assignableUsers, true);
 
-        // 3. Apply changes via a batch
-        const batch = writeBatch(db);
-
         // Load current week assignments to update pending ones
         const weekStartStr = getMondayISO(new Date());
-        const assignmentsSnap = await getDocs(
-          query(
-            collection(db, 'assignments'),
-            where('groupId', '==', user.groupId),
-            where('weekStart', '==', weekStartStr)
-          )
-        );
+        const { data: assignmentsData, error: assErr } = await supabase
+          .from('assignments')
+          .select('*')
+          .eq('group_id', user.groupId)
+          .eq('week_start', weekStartStr);
 
-        const currentWeekAssignments = assignmentsSnap.docs.map(
-          (d) => ({ id: d.id, ...d.data() } as Assignment)
-        );
+        if (assErr) throw assErr;
 
+        const currentWeekAssignments = (assignmentsData || []).map(mapAssignment);
         const todayDateISO = new Date().toISOString().split('T')[0];
 
         const getDateForWeekday = (weekStart: string, idx: number) => {
@@ -471,8 +502,12 @@ export default function TasksScreen() {
           const task = fetchedTasks.find((t) => t.id === item.taskId);
           if (!task || !task.auto) continue; // Only mix auto-assigned tasks
 
-          // Update Task in Firestore
-          batch.update(doc(db, 'tasks', task.id), { assignedTo: item.assignedTo });
+          // Update Task in Supabase
+          const { error: tErr } = await supabase
+            .from('tasks')
+            .update({ assigned_to: item.assignedTo })
+            .eq('id', task.id);
+          if (tErr) throw tErr;
 
           // Update/Create weekly pending assignments for today and future days
           const activeDays = task.weekDays || [];
@@ -487,67 +522,55 @@ export default function TasksScreen() {
 
               if (existing) {
                 if (existing.status === 'pending') {
-                  batch.update(doc(db, 'assignments', existing.id), {
-                    assignedTo: item.assignedTo,
-                  });
+                  const { error } = await supabase
+                    .from('assignments')
+                    .update({ assigned_to: item.assignedTo })
+                    .eq('id', existing.id);
+                  if (error) throw error;
                 }
               } else {
                 // Create new pending assignment
-                const newRef = doc(collection(db, 'assignments'));
-                batch.set(newRef, {
-                  taskId: task.id,
-                  groupId: user.groupId,
-                  title: task.title,
-                  complexity: task.complexity,
-                  weekDays: task.weekDays,
-                  assignedTo: item.assignedTo,
-                  status: 'pending',
-                  weekStart: weekStartStr,
-                  date: dateISO,
-                  doneAt: null,
-                  skippedAt: null,
-                  createdAt: serverTimestamp(),
-                });
+                const { error } = await supabase
+                  .from('assignments')
+                  .insert({
+                    task_id: task.id,
+                    group_id: user.groupId,
+                    title: task.title,
+                    complexity: task.complexity,
+                    week_days: task.weekDays,
+                    assigned_to: item.assignedTo,
+                    status: 'pending',
+                    week_start: weekStartStr,
+                    date: dateISO,
+                    done_at: null,
+                    skipped_at: null,
+                  });
+                if (error) throw error;
               }
             }
           }
         }
 
-        await batch.commit();
         await loadData();
         if (user) {
           syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
         }
-        if (Platform.OS === 'web') {
-          window.alert('Auto-assigned tasks shuffled successfully!');
-        } else {
-          Alert.alert('Success', 'Auto-assigned tasks shuffled successfully!');
-        }
+        AppAlert.alert('Success', 'Auto-assigned tasks shuffled successfully!');
       } catch (e: any) {
-        if (Platform.OS === 'web') {
-          window.alert(e?.message ?? 'Could not shuffle tasks');
-        } else {
-          Alert.alert('Error', e?.message ?? 'Could not shuffle tasks');
-        }
+        AppAlert.alert('Error', e?.message ?? 'Could not shuffle tasks');
       } finally {
         setMixing(false);
       }
     };
 
-    if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to re-shuffle all auto-assigned tasks for this week?')) {
-        runShuffle();
-      }
-    } else {
-      Alert.alert(
-        'Shuffle Tasks',
-        'Are you sure you want to re-shuffle all auto-assigned tasks for this week?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Shuffle', onPress: runShuffle },
-        ]
-      );
-    }
+    AppAlert.alert(
+      'Shuffle Tasks',
+      'Are you sure you want to re-shuffle all auto-assigned tasks for this week?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Shuffle', onPress: runShuffle },
+      ]
+    );
   };
 
   const filteredTasks = useMemo(() => {
@@ -785,7 +808,7 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   cardInactive: { opacity: 0.5 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  activeIndicator: { width: 8, height: 8, borderRadius: 4 },
+  activeIndicator: { width: 10, height: 10, borderRadius: 5 },
   cardTitle: { fontSize: 16, fontWeight: '600', color: Colors.textPrimary, flexShrink: 1 },
   cardPoints: { fontSize: 13, fontWeight: '600', color: 'rgb(255, 179, 71)', marginLeft: 8 },
   textMuted: { color: Colors.textMuted },

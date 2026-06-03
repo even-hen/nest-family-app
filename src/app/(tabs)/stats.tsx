@@ -1,20 +1,21 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, RefreshControl, Modal, TextInput, Alert,
+  ActivityIndicator, RefreshControl, Modal, TextInput,
   PanResponder,
 } from 'react-native';
+import { AppAlert } from '../../utils/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { db } from '../../lib/firebase';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { User, UserType } from '../../types';
 import { getTypeColor } from '../../utils/colors';
 import { USER_TYPES } from '../../constants/domain';
+import { mapUser, mapAssignment, mapTask } from '../../utils/supabaseMappers';
 
 interface WeekStat {
   userId: string;
@@ -39,7 +40,7 @@ function getWeekStart(offsetWeeks = 0): string {
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1) - offsetWeeks * 7;
   d.setDate(diff);
-  // Use local date parts to match how weekStart is stored in Firestore
+  // Use local date parts to match how weekStart is stored in database
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const date = String(d.getDate()).padStart(2, '0');
@@ -107,82 +108,88 @@ export default function StatsScreen() {
     if (!user?.groupId) return;
     const weekStart = getWeekStart(weekOffset);
 
-    const [usersSnap, assignmentsSnap, tasksSnap] = await Promise.all([
-      getDocs(query(collection(db, 'users'), where('groupId', '==', user.groupId))),
-      getDocs(query(
-        collection(db, 'assignments'),
-        where('groupId', '==', user.groupId),
-        where('weekStart', '==', weekStart),
-      )),
-      getDocs(query(collection(db, 'tasks'), where('groupId', '==', user.groupId), where('isActive', '==', true))),
-    ]);
+    try {
+      const [usersRes, assignmentsRes, tasksRes] = await Promise.all([
+        supabase.from('users').select('*').eq('group_id', user.groupId),
+        supabase.from('assignments').select('*').eq('group_id', user.groupId).eq('week_start', weekStart),
+        supabase.from('tasks').select('*').eq('group_id', user.groupId).eq('is_active', true),
+      ]);
 
-    const userMap: Record<string, { name: string; resource: number; type: UserType }> = {};
-    usersSnap.docs.forEach((d) => {
-      const data = d.data();
-      userMap[d.id] = {
-        name: data.name,
-        resource: data.resource ?? 100,
-        type: data.type ?? 'Child',
+      if (usersRes.error) throw usersRes.error;
+      if (assignmentsRes.error) throw assignmentsRes.error;
+      if (tasksRes.error) throw tasksRes.error;
+
+      const fetchedUsers = (usersRes.data || []).map(mapUser);
+      const fetchedAssignments = (assignmentsRes.data || []).map(mapAssignment);
+      const fetchedTasks = (tasksRes.data || []).map(mapTask);
+
+      const userMap: Record<string, { name: string; resource: number; type: UserType }> = {};
+      fetchedUsers.forEach((u) => {
+        userMap[u.id] = {
+          name: u.name,
+          resource: u.resource ?? 100,
+          type: u.type ?? 'Child',
+        };
+      });
+
+      const tasksList = fetchedTasks.map((t) => ({
+        assignedTo: t.assignedTo,
+        complexity: t.complexity,
+        weekDays: t.weekDays || [],
+      }));
+
+      const getResourceUsed = (userId: string) => {
+        return tasksList
+          .filter((t) => t.assignedTo === userId)
+          .reduce((sum, t) => sum + t.complexity * (t.weekDays ? t.weekDays.length : 0), 0);
       };
-    });
 
-    const tasksList = tasksSnap.docs.map((d) => ({
-      assignedTo: d.data().assignedTo,
-      complexity: d.data().complexity,
-      weekDays: d.data().weekDays || [],
-    }));
+      const totalWeeklyCost = tasksList.reduce((sum, t) => sum + t.complexity * (t.weekDays ? t.weekDays.length : 0), 0);
+      const totalResource = Object.values(userMap).reduce((sum, m) => sum + m.resource, 0);
 
-    const getResourceUsed = (userId: string) => {
-      return tasksList
-        .filter((t) => t.assignedTo === userId)
-        .reduce((sum, t) => sum + t.complexity * (t.weekDays ? t.weekDays.length : 0), 0);
-    };
+      const statsMap: Record<string, WeekStat> = {};
+      for (const uid of Object.keys(userMap)) {
+        const usedCost = getResourceUsed(uid);
+        const userShare = totalResource > 0 ? (userMap[uid].resource / totalResource) * totalWeeklyCost : 0;
+        const usedPct = userShare > 0 ? Math.round((usedCost / userShare) * 100) : 0;
 
-    const totalWeeklyCost = tasksList.reduce((sum, t) => sum + t.complexity * (t.weekDays ? t.weekDays.length : 0), 0);
-    const totalResource = Object.values(userMap).reduce((sum, m) => sum + m.resource, 0);
-
-    const statsMap: Record<string, WeekStat> = {};
-    for (const uid of Object.keys(userMap)) {
-      const usedCost = getResourceUsed(uid);
-      const userShare = totalResource > 0 ? (userMap[uid].resource / totalResource) * totalWeeklyCost : 0;
-      const usedPct = userShare > 0 ? Math.round((usedCost / userShare) * 100) : 0;
-
-      statsMap[uid] = {
-        userId: uid,
-        userName: userMap[uid].name,
-        userType: userMap[uid].type,
-        done: 0, skipped: 0, pending: 0,
-        totalComplexityDone: 0,
-        resource: userMap[uid].resource,
-        usedPct: usedPct,
-      };
-    }
-
-    const loadedAssignments: any[] = [];
-    assignmentsSnap.docs.forEach((d) => {
-      const data = d.data();
-      loadedAssignments.push({ id: d.id, ...data });
-      const uid = data.assignedTo;
-      if (!statsMap[uid]) return;
-      if (data.status === 'done') {
-        statsMap[uid].done++;
-        statsMap[uid].totalComplexityDone += data.complexity ?? 0;
-      } else if (data.status === 'skipped') {
-        statsMap[uid].skipped++;
-      } else {
-        statsMap[uid].pending++;
+        statsMap[uid] = {
+          userId: uid,
+          userName: userMap[uid].name,
+          userType: userMap[uid].type,
+          done: 0, skipped: 0, pending: 0,
+          totalComplexityDone: 0,
+          resource: userMap[uid].resource,
+          usedPct: usedPct,
+        };
       }
-    });
 
-    setAllAssignments(loadedAssignments);
-    const sortedStats = Object.values(statsMap).sort((a, b) => {
-      if (a.userId === b.userId) return 0;
-      if (a.userId === user?.id) return -1;
-      if (b.userId === user?.id) return 1;
-      return b.done - a.done;
-    });
-    setStats(sortedStats);
+      const loadedAssignments: any[] = [];
+      fetchedAssignments.forEach((assignment) => {
+        loadedAssignments.push(assignment);
+        const uid = assignment.assignedTo;
+        if (!statsMap[uid]) return;
+        if (assignment.status === 'done') {
+          statsMap[uid].done++;
+          statsMap[uid].totalComplexityDone += assignment.complexity ?? 0;
+        } else if (assignment.status === 'skipped') {
+          statsMap[uid].skipped++;
+        } else {
+          statsMap[uid].pending++;
+        }
+      });
+
+      setAllAssignments(loadedAssignments);
+      const sortedStats = Object.values(statsMap).sort((a, b) => {
+        if (a.userId === b.userId) return 0;
+        if (a.userId === user?.id) return -1;
+        if (b.userId === user?.id) return 1;
+        return b.done - a.done;
+      });
+      setStats(sortedStats);
+    } catch (e) {
+      console.error(e);
+    }
   }, [user?.groupId, user?.id, weekOffset]);
 
   useFocusEffect(useCallback(() => { loadStats().finally(() => setLoading(false)); }, [loadStats]));
@@ -200,36 +207,48 @@ export default function StatsScreen() {
 
   const handleSave = async () => {
     if (!editingUser) return;
-    if (form.name.trim().length < 2) { Alert.alert('Error', 'Name must be at least 2 characters'); return; }
+    if (form.name.trim().length < 2) { AppAlert.alert('Error', 'Name must be at least 2 characters'); return; }
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', editingUser.id), {
-        name: form.name.trim(),
-        resource: form.resource,
-        type: form.type,
-      });
+      const { error } = await supabase
+        .from('users')
+        .update({
+          name: form.name.trim(),
+          resource: form.resource,
+          type: form.type,
+        })
+        .eq('id', editingUser.id);
+
+      if (error) throw error;
+
       if (editingUser.id === user?.id) await refreshUser();
       await loadStats();
       setEditingUser(null);
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not update user');
+      AppAlert.alert('Error', e?.message ?? 'Could not update user');
     } finally {
       setSaving(false);
     }
   };
 
   const handleRemove = (userId: string) => {
-    Alert.alert('Remove Member', 'Remove this member from the group?', [
+    AppAlert.alert('Remove Member', 'Remove this member from the group?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive',
         onPress: async () => {
           try {
-            await updateDoc(doc(db, 'users', userId), { groupId: null });
+            const { error } = await supabase
+              .from('users')
+              .update({ group_id: null })
+              .eq('id', userId);
+
+            if (error) throw error;
+
             await loadStats();
             setEditingUser(null);
           } catch (e: any) {
-            Alert.alert('Error', e?.message ?? 'Could not remove member');
+            AppAlert.alert('Error', e?.message ?? 'Could not remove member');
           }
         },
       },

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, ScrollView,
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
 } from 'react-native';
+import { AppAlert } from '../../utils/alert';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
@@ -18,7 +19,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Please fill in all fields');
+      AppAlert.alert('Error', 'Please fill in all fields');
       return;
     }
     setLoading(true);
@@ -26,7 +27,7 @@ export default function LoginScreen() {
       await signIn(email.trim(), password);
       router.replace('/');
     } catch (e: any) {
-      Alert.alert('Login Failed', e?.message ?? 'Something went wrong');
+      AppAlert.alert('Login Failed', e?.message ?? 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -34,15 +35,15 @@ export default function LoginScreen() {
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      Alert.alert('Reset Password', 'Please enter your email address in the field above first, then tap "Forgot password?" again.');
+      AppAlert.alert('Reset Password', 'Please enter your email address in the field above first, then tap "Forgot password?" again.');
       return;
     }
     setLoading(true);
     try {
       await resetPassword(email.trim());
-      Alert.alert('Success', 'Password reset email sent! Please check your inbox.');
+      AppAlert.alert('Success', 'Password reset email sent! Please check your inbox.');
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Could not send reset email');
+      AppAlert.alert('Error', e?.message ?? 'Could not send reset email');
     } finally {
       setLoading(false);
     }

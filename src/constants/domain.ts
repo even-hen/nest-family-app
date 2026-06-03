@@ -1,6 +1,6 @@
 /**
  * Centralized domain constants.
- * Single source of truth for user types, weekdays, and Firestore collection names.
+ * Single source of truth for user types, weekdays, and Supabase table names.
  */
 import { UserType } from '../types';
 
@@ -18,7 +18,7 @@ export const DAYS_OF_WEEK = [
   { label: 'Sun', value: 0 },
 ] as const;
 
-export const FIRESTORE_COLLECTIONS = {
+export const SUPABASE_TABLES = {
   TASKS: 'tasks',
   USERS: 'users',
   ASSIGNMENTS: 'assignments',

@@ -1,8 +1,7 @@
 import { useFocusEffect } from 'expo-router';
-import { collection, doc, getDocs, query, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert,
+  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -12,13 +11,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radius, Spacing, ThemeColors } from '../../constants/colors';
-import { FIRESTORE_COLLECTIONS } from '../../constants/domain';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
-import { db } from '../../lib/firebase';
 import { syncLocalNotifications } from '../../lib/notifications';
+import { supabase } from '../../lib/supabase';
 import { Assignment, AssignmentStatus } from '../../types';
+import { AppAlert } from '../../utils/alert';
 import { formatDate, getTodayISO, getYesterdayISO } from '../../utils/date';
+import { mapAssignment, mapTask, mapUser } from '../../utils/supabaseMappers';
 
 const getStatusColor = (status: AssignmentStatus, Colors: ThemeColors): string => {
   if (status === 'pending') return Colors.pending;
@@ -53,9 +53,13 @@ function AssignmentCard({
   return (
     <View style={[styles.card, isPending && styles.cardPending]}>
       <View style={styles.cardLeft}>
-        {emoji ? (
-          <Text style={styles.cardEmoji}>{emoji}</Text>
-        ) : null}
+        <View style={styles.iconContainer}>
+          {emoji ? (
+            <Text style={styles.cardEmoji}>{emoji}</Text>
+          ) : (
+            <View style={[styles.activeIndicator, { backgroundColor: Colors.success }]} />
+          )}
+        </View>
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, !showAssignee && { marginBottom: 0 }]}>{assignment.title}</Text>
           {showAssignee && (
@@ -108,71 +112,56 @@ export default function AssignmentsScreen() {
   const loadData = useCallback(async () => {
     if (!user?.groupId) return;
     try {
-      const today = getTodayISO();
+      const todayISO = getTodayISO();
 
       // Sweep: mark any past-pending assignments as skipped (client-side, timezone-aware)
       // Runs fire-and-forget so it never blocks the UI
       (async () => {
         try {
-          const pastSnap = await getDocs(query(
-            collection(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS),
-            where('groupId', '==', user.groupId),
-            where('status', '==', 'pending'),
-          ));
-          const stale = pastSnap.docs.filter((d) => d.data().date < today);
-          if (stale.length > 0) {
-            const batch = writeBatch(db);
-            stale.forEach((d) => batch.update(d.ref, { status: 'skipped', skippedAt: Timestamp.now() }));
-            await batch.commit();
-          }
+          await supabase
+            .from('assignments')
+            .update({ status: 'skipped', skipped_at: new Date().toISOString() })
+            .eq('group_id', user.groupId)
+            .eq('status', 'pending')
+            .lt('date', todayISO);
         } catch (_) { /* non-critical */ }
       })();
 
-      const [todaySnap, yesterdaySnap, usersSnap, tasksSnap] = await Promise.all([
-        getDocs(query(
-          collection(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS),
-          where('groupId', '==', user.groupId),
-          where('date', '==', today)
-        )),
-        getDocs(query(
-          collection(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS),
-          where('groupId', '==', user.groupId),
-          where('date', '==', yesterday)
-        )),
-        getDocs(query(
-          collection(db, FIRESTORE_COLLECTIONS.USERS),
-          where('groupId', '==', user.groupId)
-        )),
-        getDocs(query(
-          collection(db, FIRESTORE_COLLECTIONS.TASKS),
-          where('groupId', '==', user.groupId)
-        )),
+      const [assignmentsRes, usersRes, tasksRes] = await Promise.all([
+        supabase
+          .from('assignments')
+          .select('*')
+          .eq('group_id', user.groupId)
+          .in('date', [todayISO, getYesterdayISO()]),
+        supabase
+          .from('users')
+          .select('*')
+          .eq('group_id', user.groupId),
+        supabase
+          .from('tasks')
+          .select('*')
+          .eq('group_id', user.groupId),
       ]);
 
-      const assignmentsList = [
-        ...todaySnap.docs,
-        ...yesterdaySnap.docs
-      ].map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          ...data,
-          doneAt: data.doneAt?.toDate?.() ?? null,
-          skippedAt: data.skippedAt?.toDate?.() ?? null,
-        } as Assignment;
-      });
+      if (assignmentsRes.error) throw assignmentsRes.error;
+      if (usersRes.error) throw usersRes.error;
+      if (tasksRes.error) throw tasksRes.error;
 
+      const assignmentsList = (assignmentsRes.data || []).map(mapAssignment);
       setAssignments(assignmentsList);
 
       const nameMap: Record<string, string> = {};
-      usersSnap.docs.forEach((d) => { nameMap[d.id] = d.data().name; });
+      (usersRes.data || []).forEach((row) => {
+        const u = mapUser(row);
+        nameMap[u.id] = u.name;
+      });
       setUsers(nameMap);
 
       const emojiMap: Record<string, string> = {};
-      tasksSnap.docs.forEach((d) => {
-        const tData = d.data();
-        if (tData.emoji) {
-          emojiMap[d.id] = tData.emoji;
+      (tasksRes.data || []).forEach((row) => {
+        const t = mapTask(row);
+        if (t.emoji) {
+          emojiMap[t.id] = t.emoji;
         }
       });
       setTaskEmojis(emojiMap);
@@ -198,11 +187,17 @@ export default function AssignmentsScreen() {
     if (!assignment) return;
     const canMarkDone = assignment.assignedTo === user?.id || user?.type === 'Adult';
     if (!canMarkDone) {
-      Alert.alert('Permission Denied', 'Only adults can mark other members\' tasks as completed.');
+      AppAlert.alert('Permission Denied', 'Only adults can mark other members\' tasks as completed.');
       return;
     }
     try {
-      await updateDoc(doc(db, FIRESTORE_COLLECTIONS.ASSIGNMENTS, id), { status: 'done', doneAt: Timestamp.now() });
+      const { error } = await supabase
+        .from('assignments')
+        .update({ status: 'done', done_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+
       setAssignments((prev) =>
         prev.map((a) => a.id === id ? { ...a, status: 'done', doneAt: new Date() } : a)
       );
@@ -212,7 +207,7 @@ export default function AssignmentsScreen() {
         syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
       }
     } catch (e) {
-      Alert.alert('Error', 'Could not update task');
+      AppAlert.alert('Error', 'Could not update task');
     }
   };
 
@@ -377,7 +372,16 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   cardEmoji: {
     fontSize: 22,
     alignSelf: 'center',
-    marginRight: 2,
+  },
+  activeIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  iconContainer: {
+    width: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   typeBadge: { backgroundColor: Colors.bgInput, borderRadius: Radius.sm, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: Colors.border },

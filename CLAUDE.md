@@ -15,8 +15,8 @@ Welcome! This guide is designed for **LLM agents** (and human developers) to qui
 - **Routing**: `expo-router` `~55.0.15` (file-based navigation)
 - **Styling**: `nativewind` `^4.2.4` (Tailwind CSS v3 utility classes with Tailwind CSS config presets) and dynamically themed stylesheets
 - **State & Context**: Context API (`AuthContext`, `ThemeContext`) and `zustand`
-- **Database / Auth**: Firebase SDK `^12.13.0` & Firebase Firestore
-- **Backend / Scheduler**: Firebase Functions V2 (Cloud Functions)
+- **Database / Auth**: Supabase JS SDK (`@supabase/supabase-js`) & Supabase Auth
+- **Backend / Scheduler**: Supabase pg_cron & PostgreSQL PL/pgSQL database functions
 - **Animation**: `react-native-reanimated` `4.2.1` and `react-native-worklets`
 
 ---
@@ -32,9 +32,8 @@ Welcome! This guide is designed for **LLM agents** (and human developers) to qui
 - **Run ESLint/Linting**: `npm run lint` (or `npx expo lint`)
 - **Reset Project Starter Code**: `npm run reset-project`
 
-### Firebase Functions Commands (Run in `/nest-app/functions` directory)
-- **Run Local Emulators**: `firebase emulators:start` (highly recommended for local testing; see connection setup in `src/lib/firebase.ts`)
-- **Deploy Cloud Functions**: `firebase deploy --only functions`
+### Database Commands (Run in Supabase Dashboard SQL Editor)
+- **Setup Tables, Triggers & pg_cron**: Execute [`scripts/supabase_setup.sql`](file:///D:/Google%20Antigravity/Nest-your-family-team/nest-app/scripts/supabase_setup.sql) directly in your Supabase SQL Editor.
 
 ---
 

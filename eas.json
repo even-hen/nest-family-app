@@ -14,12 +14,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyBnWwKYBdrrEA61QJPdpdjbCEhDjsmYPzE",
-        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "nest-bee94.firebaseapp.com",
-        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "nest-bee94",
-        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "nest-bee94.firebasestorage.app",
-        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "362190377540",
-        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:362190377540:web:d00950882d8dae77ab2211"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://tjqznfdufdodbnjwapcv.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqcXpuZmR1ZmRvZGJuandhcGN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzNTYxMjEsImV4cCI6MjA5NTkzMjEyMX0.fH_312cQYtCcZXY7nL49cb9xwfDSHhQw9FbCjb0zecQ"
       }
     },
     "production": {
