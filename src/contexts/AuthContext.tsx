@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { syncLocalNotifications } from '../lib/notifications';
 import { supabase } from '../lib/supabase';
 import { User, UserType } from '../types';
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const checkUnreadNotifications = async (uid: string, groupId: string | null) => {
+  const checkUnreadNotifications = useCallback(async (uid: string, groupId: string | null) => {
     if (!groupId) return;
     try {
       const { count, error } = await supabase
@@ -45,9 +45,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('Error checking unread notifications:', e);
     }
-  };
+  }, []);
 
-  const fetchUser = async (uid: string) => {
+  const fetchUser = useCallback(async (uid: string) => {
     try {
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -77,37 +77,79 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('Error fetching user metadata:', e);
     }
-  };
+  }, [checkUnreadNotifications]);
+
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     // 1. Check initial active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setAuthUid(session.user.id);
-        fetchUser(session.user.id).finally(() => setLoading(false));
-      } else {
-        setAuthUid(null);
-        setUser(null);
-        setLoading(false);
-      }
-    });
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (!isMounted) return;
+        if (session?.user) {
+          setAuthUid(session.user.id);
+        } else {
+          setAuthUid(null);
+          setUser(null);
+        }
+        setIsAuthChecking(false);
+      })
+      .catch((err) => {
+        console.error('[AuthContext] Error getting initial session:', err);
+        if (isMounted) {
+          setAuthUid(null);
+          setUser(null);
+          setIsAuthChecking(false);
+        }
+      });
 
     // 2. Subscribe to auth state updates
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
       if (session?.user) {
         setAuthUid(session.user.id);
-        await fetchUser(session.user.id);
       } else {
         setAuthUid(null);
         setUser(null);
       }
-      setLoading(false);
+      setIsAuthChecking(false);
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
   }, []);
+
+  // 3. Fetch user profile when authUid changes, decoupled from the auth callbacks to avoid client deadlocks
+  useEffect(() => {
+    if (isAuthChecking) return;
+
+    if (!authUid) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setLoading(true);
+
+    fetchUser(authUid)
+      .catch((err) => {
+        console.error('[AuthContext] Error fetching user profile:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authUid, isAuthChecking, fetchUser]);
 
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({
