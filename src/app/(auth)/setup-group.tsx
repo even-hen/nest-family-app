@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView, Platform,
+  ActivityIndicator, ScrollView,
 } from 'react-native';
 import { AppAlert } from '../../utils/alert';
 import { router } from 'expo-router';
@@ -18,6 +18,7 @@ export default function SetupGroupScreen() {
   const [groupName, setGroupName] = useState('');
   const [inviteToken, setInviteToken] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
   const ALL_ROLES = ['Adult', 'Teen', 'Child'];
@@ -52,8 +53,15 @@ export default function SetupGroupScreen() {
     { title: 'Clean patio', complexity: 35, availableFor: ALL_ROLES, weekDays: [0] },
   ];
 
+  const changeMode = (newMode: 'choose' | 'create' | 'join') => {
+    setMode(newMode);
+    setErrorMsg('');
+  };
+
   const handleCreate = async () => {
+    setErrorMsg('');
     if (!groupName.trim()) {
+      setErrorMsg('Please enter a group name');
       AppAlert.alert('Error', 'Please enter a group name');
       return;
     }
@@ -106,6 +114,7 @@ export default function SetupGroupScreen() {
       await refreshUser();
       router.replace('/(tabs)/assignments');
     } catch (e: any) {
+      setErrorMsg(e?.message ?? 'Could not create group');
       AppAlert.alert('Error', e?.message ?? 'Could not create group');
     } finally {
       setLoading(false);
@@ -113,7 +122,9 @@ export default function SetupGroupScreen() {
   };
 
   const handleJoin = async () => {
+    setErrorMsg('');
     if (!inviteToken.trim()) {
+      setErrorMsg('Please enter an invite code');
       AppAlert.alert('Error', 'Please enter an invite code');
       return;
     }
@@ -128,6 +139,7 @@ export default function SetupGroupScreen() {
         .single();
 
       if (linkErr || !inviteLink) {
+        setErrorMsg('Invalid invite code');
         AppAlert.alert('Error', 'Invalid invite code');
         setLoading(false);
         return;
@@ -135,7 +147,8 @@ export default function SetupGroupScreen() {
 
       const expiresAt = new Date(inviteLink.expires_at);
       if (expiresAt < new Date()) {
-        AppAlert.alert('Error', 'This invite link has expired');
+        setErrorMsg('This invite code has expired');
+        AppAlert.alert('Error', 'This code link has expired');
         setLoading(false);
         return;
       }
@@ -162,6 +175,7 @@ export default function SetupGroupScreen() {
       await refreshUser();
       router.replace('/(tabs)/assignments');
     } catch (e: any) {
+      setErrorMsg(e?.message ?? 'Could not join group');
       AppAlert.alert('Error', e?.message ?? 'Could not join group');
     } finally {
       setLoading(false);
@@ -180,7 +194,7 @@ export default function SetupGroupScreen() {
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.optionCard} onPress={() => setMode('create')}>
+          <TouchableOpacity style={styles.optionCard} onPress={() => changeMode('create')}>
             <View style={[styles.optionIcon, { backgroundColor: Colors.primary + '20' }]}>
               <Text style={styles.optionEmoji}>✨</Text>
             </View>
@@ -193,7 +207,7 @@ export default function SetupGroupScreen() {
             <Text style={styles.optionArrow}>→</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.optionCard} onPress={() => setMode('join')}>
+          <TouchableOpacity style={styles.optionCard} onPress={() => changeMode('join')}>
             <View style={[styles.optionIcon, { backgroundColor: Colors.success + '20' }]}>
               <Text style={styles.optionEmoji}>🔗</Text>
             </View>
@@ -212,7 +226,7 @@ export default function SetupGroupScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => setMode('choose')} style={styles.back}>
+      <TouchableOpacity onPress={() => changeMode('choose')} style={styles.back}>
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
 
@@ -225,13 +239,16 @@ export default function SetupGroupScreen() {
               <Text style={styles.label}>Group Name</Text>
               <TextInput
                 style={styles.input} value={groupName}
-                onChangeText={setGroupName} placeholder="e.g. The Smiths"
+                onChangeText={(text) => { setGroupName(text); setErrorMsg(''); }} placeholder="e.g. The Smiths"
                 placeholderTextColor={Colors.textMuted}
               />
             </View>
             <Text style={styles.hint}>
               {"🎉 We'll add common household tasks to get you started!"}
             </Text>
+            {errorMsg ? (
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            ) : null}
             <TouchableOpacity
               style={[styles.btn, loading && styles.btnDisabled]}
               onPress={handleCreate} disabled={loading}
@@ -249,10 +266,13 @@ export default function SetupGroupScreen() {
               <Text style={styles.label}>Invite Code</Text>
               <TextInput
                 style={styles.input} value={inviteToken}
-                onChangeText={setInviteToken} placeholder="Paste your invite code"
+                onChangeText={(text) => { setInviteToken(text); setErrorMsg(''); }} placeholder="Paste your invite code"
                 placeholderTextColor={Colors.textMuted} autoCapitalize="none"
               />
             </View>
+            {errorMsg ? (
+              <Text style={styles.errorText} testID="error-text">{errorMsg}</Text>
+            ) : null}
             <TouchableOpacity
               style={[styles.btn, loading && styles.btnDisabled]}
               onPress={handleJoin} disabled={loading}
@@ -297,4 +317,5 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  errorText: { color: Colors.accent, fontSize: 14, fontWeight: '600', marginTop: Spacing.xs, marginBottom: Spacing.md, textAlign: 'center' },
 });
