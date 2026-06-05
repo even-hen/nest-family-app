@@ -124,15 +124,21 @@ export async function syncLocalNotifications(
     startOfToday.setHours(0, 0, 0, 0);
     const { data: existingNotifs, error: notifErr } = await supabase
       .from('notifications')
-      .select('type')
+      .select('type, title')
       .eq('user_id', userId)
       .gte('created_at', startOfToday.toISOString());
 
     if (notifErr) throw notifErr;
 
-    const hasDailySummaryToday = (existingNotifs || []).some(n => n.type === 'daily_summary');
-    const hasMissedTaskToday = (existingNotifs || []).some(n => n.type === 'missed_task');
-    const hasWeeklyReportToday = (existingNotifs || []).some(n => n.type === 'weekly_report');
+    const hasDailySummaryToday = (existingNotifs || []).some(
+      n => n.type === 'daily_summary' && (n.title === "📋 Today's Chores" || n.title === "📋 Daily Chores")
+    );
+    const hasMissedTaskToday = (existingNotifs || []).some(
+      n => n.type === 'missed_task' && (n.title === "⚠️ Yesterday's Skipped Chores" || n.title === "⚠️ Missed Tasks")
+    );
+    const hasWeeklyReportToday = (existingNotifs || []).some(
+      n => n.type === 'weekly_report' && (n.title === "📊 Weekly Missed Tasks Report" || n.title === "📊 Weekly Report")
+    );
 
     // Parse preferred notification time
     const [timeHourStr, timeMinuteStr] = (notificationTime || '09:00').split(':');
@@ -168,8 +174,9 @@ export async function syncLocalNotifications(
           console.log('[Notifications] Inserted daily summary into Supabase.');
         }
 
-        // B. Schedule local device push notification (if trigger is in the future and not on Web)
-        if (Platform.OS !== 'web' && triggerDate.getTime() > Date.now()) {
+        // B. Schedule local device push notification (if trigger is in the future, not on Web, and not already delivered today)
+        const isAlreadyDeliveredToday = d === 0 && hasDailySummaryToday;
+        if (Platform.OS !== 'web' && triggerDate.getTime() > Date.now() && !isAlreadyDeliveredToday) {
           await Notifications.scheduleNotificationAsync({
             content: {
               title: titleText,
@@ -214,8 +221,8 @@ export async function syncLocalNotifications(
         console.log('[Notifications] Inserted yesterday missed task alert into Supabase.');
       }
 
-      // B. Schedule local device push notification (if trigger is in the future and not on Web)
-      if (Platform.OS !== 'web' && triggerDateToday.getTime() > Date.now()) {
+      // B. Schedule local device push notification (if trigger is in the future, not on Web, and not already delivered today)
+      if (Platform.OS !== 'web' && triggerDateToday.getTime() > Date.now() && !hasMissedTaskToday) {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: titleText,
@@ -273,8 +280,8 @@ export async function syncLocalNotifications(
           console.log('[Notifications] Inserted weekly missed tasks report into Supabase.');
         }
 
-        // B. Schedule local device push notification for the upcoming Monday (not on Web)
-        if (Platform.OS !== 'web') {
+        // B. Schedule local device push notification for the upcoming Monday (not on Web, and not already delivered today)
+        if (Platform.OS !== 'web' && !hasWeeklyReportToday) {
           const nextMondayTrigger = new Date();
           const currentDay = nextMondayTrigger.getDay();
           const daysUntilMonday = (1 - currentDay + 7) % 7;

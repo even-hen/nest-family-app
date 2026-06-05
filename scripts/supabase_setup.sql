@@ -16,7 +16,7 @@ create table if not exists public.notifications (
     body text not null,
     type text not null check (type in ('daily_summary', 'missed_task', 'weekly_report')),
     is_read boolean default false not null,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null
+    created_at timestamp with time zone default now() not null
 );
 
 -- Add indexes for fast lookup of unread notifications
@@ -324,22 +324,31 @@ begin
             v_notif_title := '📋 Daily Chores';
             v_notif_body := 'You have ' || v_pending_count || ' task(s) for today. Let''s get them done!';
             
-            insert into public.notifications (user_id, group_id, title, body, type, is_read)
-            values (v_user.id, v_user.group_id, v_notif_title, v_notif_body, 'daily_summary', false);
+            -- ONLY insert if not already exists today (checking both server-side and client-side titles)
+            if not exists (
+                select 1 from public.notifications 
+                where user_id = v_user.id 
+                  and type = 'daily_summary' 
+                  and (title = v_notif_title or title = '📋 Today''s Chores')
+                  and created_at::date = v_today
+            ) then
+                insert into public.notifications (user_id, group_id, title, body, type, is_read)
+                values (v_user.id, v_user.group_id, v_notif_title, v_notif_body, 'daily_summary', false);
 
-            -- Send push notification via pg_net if available
-            if v_user.expo_push_token is not null and v_user.expo_push_token like 'ExponentPushToken[%]' then
-                if exists (select 1 from pg_extension where extname = 'pg_net') then
-                    execute 'select net.http_post(
-                        url := ''https://exp.host/--/api/v2/push/send'',
-                        headers := ''{"Content-Type": "application/json"}''::jsonb,
-                        body := $1
-                    )' using json_build_object(
-                        'to', v_user.expo_push_token,
-                        'title', v_notif_title,
-                        'body', v_notif_body,
-                        'sound', 'default'
-                    )::jsonb;
+                -- Send push notification via pg_net if available
+                if v_user.expo_push_token is not null and v_user.expo_push_token like 'ExponentPushToken[%]' then
+                    if exists (select 1 from pg_extension where extname = 'pg_net') then
+                        execute 'select net.http_post(
+                            url := ''https://exp.host/--/api/v2/push/send'',
+                            headers := ''{"Content-Type": "application/json"}''::jsonb,
+                            body := $1
+                        )' using json_build_object(
+                            'to', v_user.expo_push_token,
+                            'title', v_notif_title,
+                            'body', v_notif_body,
+                            'sound', 'default'
+                        )::jsonb;
+                    end if;
                 end if;
             end if;
         end if;
@@ -349,22 +358,31 @@ begin
             v_notif_title := '⚠️ Missed Tasks';
             v_notif_body := v_skipped_count || ' task(s) from yesterday were missed.';
             
-            insert into public.notifications (user_id, group_id, title, body, type, is_read)
-            values (v_user.id, v_user.group_id, v_notif_title, v_notif_body, 'missed_task', false);
+            -- ONLY insert if not already exists today (checking both server-side and client-side titles)
+            if not exists (
+                select 1 from public.notifications 
+                where user_id = v_user.id 
+                  and type = 'missed_task' 
+                  and (title = v_notif_title or title = '⚠️ Yesterday''s Skipped Chores')
+                  and created_at::date = v_today
+            ) then
+                insert into public.notifications (user_id, group_id, title, body, type, is_read)
+                values (v_user.id, v_user.group_id, v_notif_title, v_notif_body, 'missed_task', false);
 
-            -- Send push notification via pg_net if available
-            if v_user.expo_push_token is not null and v_user.expo_push_token like 'ExponentPushToken[%]' then
-                if exists (select 1 from pg_extension where extname = 'pg_net') then
-                    execute 'select net.http_post(
-                        url := ''https://exp.host/--/api/v2/push/send'',
-                        headers := ''{"Content-Type": "application/json"}''::jsonb,
-                        body := $1
-                    )' using json_build_object(
-                        'to', v_user.expo_push_token,
-                        'title', v_notif_title,
-                        'body', v_notif_body,
-                        'sound', 'default'
-                    )::jsonb;
+                -- Send push notification via pg_net if available
+                if v_user.expo_push_token is not null and v_user.expo_push_token like 'ExponentPushToken[%]' then
+                    if exists (select 1 from pg_extension where extname = 'pg_net') then
+                        execute 'select net.http_post(
+                            url := ''https://exp.host/--/api/v2/push/send'',
+                            headers := ''{"Content-Type": "application/json"}''::jsonb,
+                            body := $1
+                        )' using json_build_object(
+                            'to', v_user.expo_push_token,
+                            'title', v_notif_title,
+                            'body', v_notif_body,
+                            'sound', 'default'
+                        )::jsonb;
+                    end if;
                 end if;
             end if;
         end if;
@@ -374,22 +392,31 @@ begin
             v_notif_title := '📊 Weekly Report';
             v_notif_body := 'Weekly performance report is ready. Check the Members tab for details.';
             
-            insert into public.notifications (user_id, group_id, title, body, type, is_read)
-            values (v_user.id, v_user.group_id, v_notif_title, v_notif_body, 'weekly_report', false);
+            -- ONLY insert if not already exists today (checking both server-side and client-side titles)
+            if not exists (
+                select 1 from public.notifications 
+                where user_id = v_user.id 
+                  and type = 'weekly_report' 
+                  and (title = v_notif_title or title = '📊 Weekly Missed Tasks Report')
+                  and created_at::date = v_today
+            ) then
+                insert into public.notifications (user_id, group_id, title, body, type, is_read)
+                values (v_user.id, v_user.group_id, v_notif_title, v_notif_body, 'weekly_report', false);
 
-            -- Send push notification via pg_net if available
-            if v_user.expo_push_token is not null and v_user.expo_push_token like 'ExponentPushToken[%]' then
-                if exists (select 1 from pg_extension where extname = 'pg_net') then
-                    execute 'select net.http_post(
-                        url := ''https://exp.host/--/api/v2/push/send'',
-                        headers := ''{"Content-Type": "application/json"}''::jsonb,
-                        body := $1
-                    )' using json_build_object(
-                        'to', v_user.expo_push_token,
-                        'title', v_notif_title,
-                        'body', v_notif_body,
-                        'sound', 'default'
-                    )::jsonb;
+                -- Send push notification via pg_net if available
+                if v_user.expo_push_token is not null and v_user.expo_push_token like 'ExponentPushToken[%]' then
+                    if exists (select 1 from pg_extension where extname = 'pg_net') then
+                        execute 'select net.http_post(
+                            url := ''https://exp.host/--/api/v2/push/send'',
+                            headers := ''{"Content-Type": "application/json"}''::jsonb,
+                            body := $1
+                        )' using json_build_object(
+                            'to', v_user.expo_push_token,
+                            'title', v_notif_title,
+                            'body', v_notif_body,
+                            'sound', 'default'
+                        )::jsonb;
+                    end if;
                 end if;
             end if;
         end if;
