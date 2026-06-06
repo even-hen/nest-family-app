@@ -1,7 +1,7 @@
 # 🪺 Nest — Premium Family Task & Productivity App
 
 <div align="center">
-  <img src="./assets/images/logo-glow.png" width="120" height="120" alt="Nest Logo" />
+  <img src="./assets/images/android-icon-monochrome.png" width="240" height="240" alt="Nest Logo" />
   <h3>Coordinated, Proportional, and Stress-Free Family Task Distribution</h3>
   <p>Built with Expo (SDK 55), React Native, NativeWind, and Supabase (PostgreSQL, pg_cron & PL/pgSQL database functions).</p>
 </div>
