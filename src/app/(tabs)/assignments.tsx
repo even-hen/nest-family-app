@@ -13,12 +13,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { AssignmentsScreenSkeleton } from '../../components/skeleton';
 import { syncLocalNotifications } from '../../lib/notifications';
 import { supabase } from '../../lib/supabase';
 import { Assignment, AssignmentStatus } from '../../types';
 import { AppAlert } from '../../utils/alert';
 import { formatDate, getTodayISO, getYesterdayISO } from '../../utils/date';
 import { mapAssignment, mapTask, mapUser } from '../../utils/supabaseMappers';
+
 
 const getStatusColor = (status: AssignmentStatus, Colors: ThemeColors): string => {
   if (status === 'pending') return Colors.pending;
@@ -39,6 +41,7 @@ function AssignmentCard({
   assigneeName,
   canMarkDone,
   onMarkDone,
+  isMarkingDone,
 }: {
   assignment: Assignment;
   emoji?: string | null;
@@ -46,6 +49,7 @@ function AssignmentCard({
   assigneeName: string;
   canMarkDone: boolean;
   onMarkDone: (id: string) => void;
+  isMarkingDone?: boolean;
 }) {
   const { Colors } = useAppTheme();
   const styles = useMemo(() => getStyles(Colors), [Colors]);
@@ -84,8 +88,13 @@ function AssignmentCard({
             style={styles.doneBtn}
             onPress={() => onMarkDone(assignment.id)}
             activeOpacity={0.8}
+            disabled={isMarkingDone}
           >
-            <Text style={styles.doneBtnText}>Mark Done</Text>
+            {isMarkingDone ? (
+              <ActivityIndicator color="#fff" size="small" style={{ width: 62, height: 16 }} />
+            ) : (
+              <Text style={styles.doneBtnText}>Mark Done</Text>
+            )}
           </TouchableOpacity>
         )}
       </View>
@@ -104,6 +113,7 @@ export default function AssignmentsScreen() {
   const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [markingDoneId, setMarkingDoneId] = useState<string | null>(null);
 
   const dateLabel = useMemo(() => formatDate(new Date()), []);
   const today = useMemo(() => getTodayISO(), []);
@@ -190,6 +200,7 @@ export default function AssignmentsScreen() {
       AppAlert.alert('Permission Denied', 'Only adults can mark other members\' tasks as completed.');
       return;
     }
+    setMarkingDoneId(id);
     try {
       const { error } = await supabase
         .from('assignments')
@@ -208,6 +219,8 @@ export default function AssignmentsScreen() {
       }
     } catch (e) {
       AppAlert.alert('Error', 'Could not update task');
+    } finally {
+      setMarkingDoneId(null);
     }
   };
 
@@ -220,11 +233,7 @@ export default function AssignmentsScreen() {
   const skipped = displayed.filter((a) => a.date === yesterday && (a.status === 'skipped' || a.status === 'pending')).sort((a, b) => a.complexity - b.complexity);
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={Colors.primary} size="large" />
-      </View>
-    );
+    return <AssignmentsScreenSkeleton />;
   }
 
   return (
@@ -289,6 +298,7 @@ export default function AssignmentsScreen() {
                 assigneeName={users[a.assignedTo] ?? '—'}
                 canMarkDone={a.assignedTo === user?.id || user?.type === 'Adult'}
                 onMarkDone={handleMarkDone}
+                isMarkingDone={markingDoneId === a.id}
               />
             ))}
           </>
@@ -305,6 +315,7 @@ export default function AssignmentsScreen() {
                 assigneeName={users[a.assignedTo] ?? '—'}
                 canMarkDone={a.assignedTo === user?.id || user?.type === 'Adult'}
                 onMarkDone={handleMarkDone}
+                isMarkingDone={markingDoneId === a.id}
               />
             ))}
           </>

@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
-  ActivityIndicator, RefreshControl,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,10 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { NotificationsScreenSkeleton } from '../../components/skeleton';
 import { supabase } from '../../lib/supabase';
-import { Assignment, Notification } from '../../types';
-import { getMondayISO, getTodayISO, getYesterdayISO } from '../../utils/date';
-import { mapAssignment, mapUser } from '../../utils/supabaseMappers';
+import { Notification } from '../../types';
 
 const TYPE_ICONS: Record<string, string> = {
   daily_summary: 'clipboard-outline',
@@ -151,7 +150,7 @@ export default function NotificationsScreen() {
   }, [unreadCount, setUnreadCount]);
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+    return <NotificationsScreenSkeleton />;
   }
 
   return (

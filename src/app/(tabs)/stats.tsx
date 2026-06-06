@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Spacing, Radius, ThemeColors } from '../../constants/colors';
+import { StatsScreenSkeleton } from '../../components/skeleton';
 import { useAppTheme } from '../../contexts/ThemeContext';
 import { User, UserType } from '../../types';
 import { getTypeColor } from '../../utils/colors';
@@ -297,7 +298,7 @@ export default function StatsScreen() {
   const weekLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Last Week' : `${weekOffset} Weeks Ago`;
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+    return <StatsScreenSkeleton />;
   }
 
   return (

@@ -4,7 +4,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -20,10 +19,11 @@ import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { ALL_WEEK_DAYS, DAYS_OF_WEEK, USER_TYPES } from '../../constants/domain';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { TasksScreenSkeleton } from '../../components/skeleton';
 import { autoDistributeTasks } from '../../lib/distribution';
 import { supabase } from '../../lib/supabase';
 import { syncLocalNotifications } from '../../lib/notifications';
-import { Assignment, Task, User, UserType } from '../../types';
+import { Task, User, UserType } from '../../types';
 import { getTypeColor } from '../../utils/colors';
 import { getMondayISO } from '../../utils/date';
 import { mapTask, mapUser, mapAssignment } from '../../utils/supabaseMappers';
@@ -584,7 +584,7 @@ export default function TasksScreen() {
   }, [tasks, searchQuery, groupUsers]);
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+    return <TasksScreenSkeleton />;
   }
 
   return (
