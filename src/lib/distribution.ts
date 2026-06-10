@@ -5,7 +5,7 @@ import { Task, UserType } from '../types';
  * Cost = complexity * number of active weekDays.
  * E.g. complexity=10, active on 3 days → cost=30 points/week.
  */
-export function getTaskWeeklyCost(task: Pick<Task, 'weekDays' | 'complexity'>): number {
+function getTaskWeeklyCost(task: Pick<Task, 'weekDays' | 'complexity'>): number {
   return task.complexity * (task.weekDays ? task.weekDays.length : 0);
 }
 
@@ -114,7 +114,7 @@ export function autoDistributeTasks(
  * Calculate how much resource (%) each user is actually using
  * based on their assigned tasks relative to their proportional share of total work.
  */
-export function calculateResourceUsage(
+function calculateResourceUsage(
   tasks: Task[],
   userId: string,
   userResource: number,

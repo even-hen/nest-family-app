@@ -15,7 +15,7 @@ Notifications.setNotificationHandler({
 });
 
 /** Requests local notification permissions if not already granted. */
-export async function requestNotificationPermissions(): Promise<boolean> {
+async function requestNotificationPermissions(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();

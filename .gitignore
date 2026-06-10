@@ -30,6 +30,24 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# Windows
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# Fallow
+.fallow/
+
+# Logs
+*.log
+logs/
+
 # local env files
 .env
 .env*.local
@@ -45,3 +63,16 @@ app-example
 
 # Firebase service account key (never commit!)
 service-account.json
+
+# Mobile build artifacts
+*.apk
+*.aab
+*.ipa
+*.app
+
+# Test coverage
+coverage/
+
+# Expo configuration & credentials
+.expo-shared/
+credentials.json

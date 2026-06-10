@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
 import { darkColors, lightColors, ThemeColors } from '../constants/colors';
 
-export type ThemeType = 'light' | 'dark';
+type ThemeType = 'light' | 'dark';
 
 interface ThemeContextValue {
   theme: ThemeType;

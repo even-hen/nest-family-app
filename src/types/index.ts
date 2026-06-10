@@ -73,13 +73,4 @@ export interface Notification {
   createdAt: Date;
 }
 
-export interface WeekStats {
-  userId: string;
-  userName: string;
-  weekStart: string;
-  totalAssigned: number;
-  totalDone: number;
-  totalSkipped: number;
-  resourceUsed: number; // sum of complexity of done tasks
-  resourceCapacity: number; // user's resource %
-}
+

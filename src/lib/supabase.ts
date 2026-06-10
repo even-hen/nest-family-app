@@ -30,4 +30,3 @@ AppState.addEventListener('change', (state) => {
   }
 });
 
-export default supabase;

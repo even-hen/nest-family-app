@@ -35,7 +35,7 @@ export function getYesterdayISO(): string {
 }
 
 /** Returns time-of-day greeting string. */
-export function getTimeOfDay(): string {
+function getTimeOfDay(): string {
   const h = new Date().getHours();
   if (h < 12) return 'morning';
   if (h < 17) return 'afternoon';

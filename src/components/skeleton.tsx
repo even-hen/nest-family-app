@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, DimensionValue, StyleProp, StyleSheet, View, ViewStyle, ScrollView } from 'react-native';
+import { Animated, DimensionValue, StyleProp, StyleSheet, View, ViewStyle, ScrollView, Platform } from 'react-native';
 import { useAppTheme } from '../contexts/ThemeContext';
 import { Radius, Spacing, ThemeColors } from '../constants/colors';
 
@@ -10,27 +10,39 @@ interface SkeletonProps {
   style?: StyleProp<ViewStyle>;
 }
 
-export function Skeleton({ width = '100%', height = 20, borderRadius = 6, style }: SkeletonProps) {
+function Skeleton({ width = '100%', height = 20, borderRadius = 6, style }: SkeletonProps) {
   const { Colors } = useAppTheme();
   const pulseAnim = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
-    const animation = Animated.loop(
+    let isMounted = true;
+
+    const startPulse = () => {
+      if (!isMounted) return;
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 0.7,
           duration: 800,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.timing(pulseAnim, {
           toValue: 0.3,
           duration: 800,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
+      ]).start((result) => {
+        if (result.finished) {
+          startPulse();
+        }
+      });
+    };
+
+    startPulse();
+
+    return () => {
+      isMounted = false;
+      pulseAnim.stopAnimation();
+    };
   }, [pulseAnim]);
 
   return (
@@ -53,7 +65,7 @@ export function Skeleton({ width = '100%', height = 20, borderRadius = 6, style 
 // CARD SKELETONS
 // ----------------------------------------------------
 
-export function AssignmentCardSkeleton() {
+function AssignmentCardSkeleton() {
   const { Colors } = useAppTheme();
   const styles = React.useMemo(() => getSkeletonStyles(Colors), [Colors]);
 
@@ -75,7 +87,7 @@ export function AssignmentCardSkeleton() {
   );
 }
 
-export function NotificationCardSkeleton() {
+function NotificationCardSkeleton() {
   const { Colors } = useAppTheme();
   const styles = React.useMemo(() => getSkeletonStyles(Colors), [Colors]);
 
@@ -96,7 +108,7 @@ export function NotificationCardSkeleton() {
   );
 }
 
-export function MemberStatCardSkeleton() {
+function MemberStatCardSkeleton() {
   const { Colors } = useAppTheme();
   const styles = React.useMemo(() => getSkeletonStyles(Colors), [Colors]);
 
@@ -131,7 +143,7 @@ export function MemberStatCardSkeleton() {
   );
 }
 
-export function TaskCardSkeleton() {
+function TaskCardSkeleton() {
   const { Colors } = useAppTheme();
   const styles = React.useMemo(() => getSkeletonStyles(Colors), [Colors]);
 

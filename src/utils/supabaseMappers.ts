@@ -16,7 +16,7 @@ export function mapUser(row: any): User {
   };
 }
 
-export function mapGroup(row: any): Group {
+function mapGroup(row: any): Group {
   return {
     id: row.id,
     name: row.name,
@@ -61,7 +61,7 @@ export function mapAssignment(row: any): Assignment {
   };
 }
 
-export function mapNotification(row: any): Notification {
+function mapNotification(row: any): Notification {
   return {
     id: row.id,
     userId: row.user_id,

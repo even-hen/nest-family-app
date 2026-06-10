@@ -18,7 +18,7 @@ export const DAYS_OF_WEEK = [
   { label: 'Sun', value: 0 },
 ] as const;
 
-export const SUPABASE_TABLES = {
+const SUPABASE_TABLES = {
   TASKS: 'tasks',
   USERS: 'users',
   ASSIGNMENTS: 'assignments',

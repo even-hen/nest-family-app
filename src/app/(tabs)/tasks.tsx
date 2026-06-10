@@ -26,7 +26,9 @@ import { syncLocalNotifications } from '../../lib/notifications';
 import { Task, User, UserType } from '../../types';
 import { getTypeColor } from '../../utils/colors';
 import { getMondayISO } from '../../utils/date';
-import { mapTask, mapUser, mapAssignment } from '../../utils/supabaseMappers';
+import { mapTask, mapAssignment, mapUser } from '../../utils/supabaseMappers';
+import { useTasksData } from '../../hooks/useTasksData';
+import { syncWeeklyAssignments, deletePendingAssignmentsForTask } from '../../lib/assignmentService';
 
 function TaskCard({
   task, users, onEdit, canEdit,
@@ -109,12 +111,22 @@ export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(Colors, insets), [Colors, insets]);
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [groupUsers, setGroupUsers] = useState<Record<string, string>>({});
-  const [usersList, setUsersList] = useState<{ id: string; name: string }[]>([]);
-  const [fullUsersList, setFullUsersList] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  
+  const { 
+    tasks, 
+    groupUsers, 
+    fullUsersList, 
+    loading, 
+    refreshing, 
+    loadData,
+    refresh 
+  } = useTasksData({ groupId: user?.groupId ?? undefined });
+
+  const usersList = useMemo(() => 
+    fullUsersList.map(u => ({ id: u.id, name: u.name })), 
+    [fullUsersList]
+  );
+
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -123,65 +135,16 @@ export default function TasksScreen() {
 
   const isAdult = user?.type === 'Adult';
 
-  const loadData = useCallback(async () => {
-    if (!user?.groupId) return;
-    try {
-      const [tasksRes, usersRes] = await Promise.all([
-        supabase.from('tasks').select('*').eq('group_id', user.groupId),
-        supabase.from('users').select('*').eq('group_id', user.groupId),
-      ]);
-
-      if (tasksRes.error) throw tasksRes.error;
-      if (usersRes.error) throw usersRes.error;
-
-      const nameMap: Record<string, string> = {};
-      const list: { id: string; name: string }[] = [];
-      const fullList: User[] = [];
-      
-      (usersRes.data || []).forEach((row) => {
-        const uData = mapUser(row);
-        nameMap[uData.id] = uData.name;
-        list.push({ id: uData.id, name: uData.name });
-        fullList.push(uData);
-      });
-      setGroupUsers(nameMap);
-      setUsersList(list);
-      setFullUsersList(fullList);
-
-      const loadedTasks = (tasksRes.data || []).map(mapTask);
-      loadedTasks.sort((a, b) => {
-        // 1. Active tasks at the top, deactivated at the bottom
-        if (a.isActive !== b.isActive) {
-          return a.isActive ? -1 : 1;
-        }
-
-        // 2. Sort descending by total points (complexity * weekDays count)
-        const aDays = a.weekDays ? a.weekDays.length : 0;
-        const bDays = b.weekDays ? b.weekDays.length : 0;
-        const aPoints = a.complexity * aDays;
-        const bPoints = b.complexity * bDays;
-
-        if (bPoints !== aPoints) {
-          return bPoints - aPoints; // Descending
-        }
-
-        // 3. Fallback to title alphabetically
-        return a.title.localeCompare(b.title);
-      });
-      setTasks(loadedTasks);
-    } catch (e) {
-      console.error(e);
-    }
-  }, [user?.groupId]);
-
   useFocusEffect(
     useCallback(() => {
       setSearchQuery('');
-      loadData().finally(() => setLoading(false));
+      loadData();
     }, [loadData])
   );
 
-  const onRefresh = async () => { setRefreshing(true); await loadData(); setRefreshing(false); };
+  const onRefresh = async () => { 
+    await refresh(); 
+  };
 
   const openCreate = () => { setEditingTask(null); setForm({ ...EMPTY_FORM }); setModalVisible(true); };
   const openEdit = (t: Task) => {
@@ -203,11 +166,9 @@ export default function TasksScreen() {
     try {
       const auto = form.assignedTo === null;
       let finalAssignedTo = form.assignedTo;
-
       const activeDays = form.weekDays.length === 0 ? [...ALL_WEEK_DAYS] : form.weekDays;
 
       if (auto && form.isActive) {
-        // Construct temporary list of active tasks including this one to run distribution
         const tempTaskId = editingTask ? editingTask.id : 'temp-new-task';
         const otherActiveTasks = tasks
           .filter((t) => t.isActive && (editingTask ? t.id !== editingTask.id : true))
@@ -252,122 +213,27 @@ export default function TasksScreen() {
       let savedTaskId = '';
       if (editingTask) {
         savedTaskId = editingTask.id;
-        const { error } = await supabase
-          .from('tasks')
-          .update(data)
-          .eq('id', editingTask.id);
+        const { error } = await supabase.from('tasks').update(data).eq('id', editingTask.id);
         if (error) throw error;
       } else {
         const { data: newDbTask, error } = await supabase
           .from('tasks')
-          .insert({
-            ...data,
-            group_id: user.groupId,
-            created_by: user.id,
-          })
-          .select()
-          .single();
+          .insert({ ...data, group_id: user.groupId, created_by: user.id })
+          .select().single();
         if (error) throw error;
         if (!newDbTask) throw new Error('Failed to create task record');
         savedTaskId = newDbTask.id;
       }
 
-      // Sync weekly assignments for today and future days
-      const weekStartStr = getMondayISO(new Date());
-      const { data: assignmentsData, error: assErr } = await supabase
-        .from('assignments')
-        .select('*')
-        .eq('task_id', savedTaskId)
-        .eq('week_start', weekStartStr);
-
-      if (assErr) throw assErr;
-
-      const existingAssignments = (assignmentsData || []).map(mapAssignment);
-
-      const todayDayIndex = new Date().getDay();
-      const getWeekDayOrderIndex = (idx: number) => (idx === 0 ? 6 : idx - 1);
-      const todayOrder = getWeekDayOrderIndex(todayDayIndex);
-
-      const getDateForWeekday = (weekStart: string, idx: number) => {
-        const d = new Date(`${weekStart}T00:00:00.000Z`);
-        const offset = idx === 0 ? 6 : idx - 1;
-        d.setUTCDate(d.getUTCDate() + offset);
-        return d.toISOString().split('T')[0];
-      };
-
-      if (form.isActive) {
-        // We only create/update assignments for today and future days
-        for (const dayIndex of activeDays) {
-          const dateISO = getDateForWeekday(weekStartStr, dayIndex);
-          const isTodayOrFuture = getWeekDayOrderIndex(dayIndex) >= todayOrder;
-
-          if (isTodayOrFuture) {
-            const existing = existingAssignments.find((a) => a.date === dateISO);
-
-            if (existing) {
-              // Update only pending assignments
-              if (existing.status === 'pending') {
-                const { error } = await supabase
-                  .from('assignments')
-                  .update({
-                    assigned_to: finalAssignedTo,
-                    title: form.title.trim(),
-                    complexity: c,
-                    week_days: activeDays,
-                  })
-                  .eq('id', existing.id);
-                if (error) throw error;
-              }
-            } else {
-              // Create new assignment
-              const { error } = await supabase
-                .from('assignments')
-                .insert({
-                  task_id: savedTaskId,
-                  group_id: user.groupId,
-                  title: form.title.trim(),
-                  complexity: c,
-                  week_days: activeDays,
-                  assigned_to: finalAssignedTo,
-                  status: 'pending',
-                  week_start: weekStartStr,
-                  date: dateISO,
-                  done_at: null,
-                  skipped_at: null,
-                });
-              if (error) throw error;
-            }
-          }
-        }
-
-        // Delete any pending assignments for days that are today/future but are NO LONGER in activeDays
-        for (const existing of existingAssignments) {
-          const dayIdx = new Date(existing.date).getDay();
-          const isTodayOrFuture = getWeekDayOrderIndex(dayIdx) >= todayOrder;
-          const isNotActiveAnymore = !activeDays.includes(dayIdx);
-
-          if (isTodayOrFuture && isNotActiveAnymore && existing.status === 'pending') {
-            const { error } = await supabase
-              .from('assignments')
-              .delete()
-              .eq('id', existing.id);
-            if (error) throw error;
-          }
-        }
-      } else {
-        // If task is inactive, delete all pending assignments for today/future
-        for (const existing of existingAssignments) {
-          const dayIdx = new Date(existing.date).getDay();
-          const isTodayOrFuture = getWeekDayOrderIndex(dayIdx) >= todayOrder;
-          if (isTodayOrFuture && existing.status === 'pending') {
-            const { error } = await supabase
-              .from('assignments')
-              .delete()
-              .eq('id', existing.id);
-            if (error) throw error;
-          }
-        }
-      }
+      await syncWeeklyAssignments({
+        taskId: savedTaskId,
+        groupId: user.groupId,
+        title: data.title,
+        complexity: c,
+        weekDays: activeDays,
+        assignedTo: finalAssignedTo,
+        isActive: form.isActive,
+      });
 
       await loadData();
       setModalVisible(false);
@@ -388,39 +254,12 @@ export default function TasksScreen() {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           try {
-            const { error: delTaskErr } = await supabase
-              .from('tasks')
-              .delete()
-              .eq('id', id);
-
+            const { error: delTaskErr } = await supabase.from('tasks').delete().eq('id', id);
             if (delTaskErr) throw delTaskErr;
 
-            // Delete pending assignments for today/future
-            const weekStartStr = getMondayISO(new Date());
-            const todayDateISO = new Date().toISOString().split('T')[0];
+            await deletePendingAssignmentsForTask(id);
 
-            const { data: assignmentsData, error: assErr } = await supabase
-              .from('assignments')
-              .select('*')
-              .eq('task_id', id)
-              .eq('week_start', weekStartStr);
-
-            if (assErr) throw assErr;
-
-            const pendingToDelete = (assignmentsData || [])
-              .map(mapAssignment)
-              .filter((a) => a.status === 'pending' && a.date >= todayDateISO);
-
-            if (pendingToDelete.length > 0) {
-               const deleteIds = pendingToDelete.map((a) => a.id);
-               const { error: delAssErr } = await supabase
-                 .from('assignments')
-                 .delete()
-                 .in('id', deleteIds);
-               if (delAssErr) throw delAssErr;
-            }
-
-            setTasks((prev) => prev.filter((t) => t.id !== id));
+            await loadData();
             setModalVisible(false);
             if (user) {
               syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
@@ -457,7 +296,6 @@ export default function TasksScreen() {
     const runShuffle = async () => {
       setMixing(true);
       try {
-        // 1. Fetch latest active tasks and users
         const [tasksRes, usersRes] = await Promise.all([
           supabase.from('tasks').select('*').eq('group_id', user.groupId),
           supabase.from('users').select('*').eq('group_id', user.groupId),
@@ -468,87 +306,31 @@ export default function TasksScreen() {
 
         const fetchedTasks = (tasksRes.data || []).map(mapTask);
         const fetchedUsers = (usersRes.data || []).map(mapUser);
-
         const assignableUsers = fetchedUsers.map((u) => ({
-          id: u.id,
-          type: u.type,
-          resource: u.resource,
+          id: u.id, type: u.type, resource: u.resource,
         }));
 
-        // 2. Run distribution
         const { assignments: distResult } = autoDistributeTasks(fetchedTasks, assignableUsers, true);
-
-        // Load current week assignments to update pending ones
-        const weekStartStr = getMondayISO(new Date());
-        const { data: assignmentsData, error: assErr } = await supabase
-          .from('assignments')
-          .select('*')
-          .eq('group_id', user.groupId)
-          .eq('week_start', weekStartStr);
-
-        if (assErr) throw assErr;
-
-        const currentWeekAssignments = (assignmentsData || []).map(mapAssignment);
-        const todayDateISO = new Date().toISOString().split('T')[0];
-
-        const getDateForWeekday = (weekStart: string, idx: number) => {
-          const d = new Date(`${weekStart}T00:00:00.000Z`);
-          const offset = idx === 0 ? 6 : idx - 1;
-          d.setUTCDate(d.getUTCDate() + offset);
-          return d.toISOString().split('T')[0];
-        };
 
         for (const item of distResult) {
           const task = fetchedTasks.find((t) => t.id === item.taskId);
-          if (!task || !task.auto) continue; // Only mix auto-assigned tasks
+          if (!task || !task.auto) continue;
 
-          // Update Task in Supabase
           const { error: tErr } = await supabase
             .from('tasks')
             .update({ assigned_to: item.assignedTo })
             .eq('id', task.id);
           if (tErr) throw tErr;
 
-          // Update/Create weekly pending assignments for today and future days
-          const activeDays = task.weekDays || [];
-          for (const dayIndex of activeDays) {
-            const dateISO = getDateForWeekday(weekStartStr, dayIndex);
-
-            // Only update/create today or in the future
-            if (dateISO >= todayDateISO) {
-              const existing = currentWeekAssignments.find(
-                (a) => a.taskId === task.id && a.date === dateISO
-              );
-
-              if (existing) {
-                if (existing.status === 'pending') {
-                  const { error } = await supabase
-                    .from('assignments')
-                    .update({ assigned_to: item.assignedTo })
-                    .eq('id', existing.id);
-                  if (error) throw error;
-                }
-              } else {
-                // Create new pending assignment
-                const { error } = await supabase
-                  .from('assignments')
-                  .insert({
-                    task_id: task.id,
-                    group_id: user.groupId,
-                    title: task.title,
-                    complexity: task.complexity,
-                    week_days: task.weekDays,
-                    assigned_to: item.assignedTo,
-                    status: 'pending',
-                    week_start: weekStartStr,
-                    date: dateISO,
-                    done_at: null,
-                    skipped_at: null,
-                  });
-                if (error) throw error;
-              }
-            }
-          }
+          await syncWeeklyAssignments({
+            taskId: task.id,
+            groupId: user.groupId!,
+            title: task.title,
+            complexity: task.complexity,
+            weekDays: task.weekDays,
+            assignedTo: item.assignedTo,
+            isActive: task.isActive,
+          });
         }
 
         await loadData();

@@ -1,13 +1,18 @@
+import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView, Platform,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  View,
 } from 'react-native';
-import { AppAlert } from '../../utils/alert';
-import { router } from 'expo-router';
+import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { useAuth } from '../../contexts/AuthContext';
-import { Spacing, Radius, ThemeColors } from '../../constants/colors';
 import { useAppTheme } from '../../contexts/ThemeContext';
+import { AppAlert } from '../../utils/alert';
 
 export default function LoginScreen() {
   const { Colors } = useAppTheme();
@@ -58,7 +63,11 @@ export default function LoginScreen() {
         {/* Logo / Header */}
         <View style={styles.header}>
           <View style={styles.logoCircle}>
-            <Text style={styles.logoEmoji}>🏠</Text>
+            <Image
+              source={require('../../../assets/images/android-icon-monochrome.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.appName}>Nest</Text>
           <Text style={styles.tagline}>Group task balance, simplified</Text>
@@ -143,7 +152,10 @@ const getStyles = (Colors: ThemeColors) => StyleSheet.create({
     marginBottom: Spacing.md,
     shadowColor: Colors.primary, shadowOpacity: 0.5, shadowRadius: 20, elevation: 10,
   },
-  logoEmoji: { fontSize: 36 },
+  logoImage: {
+    width: 64,
+    height: 64,
+  },
   appName: { fontSize: 36, fontWeight: '800', color: Colors.textPrimary, letterSpacing: 1 },
   tagline: { fontSize: 14, color: Colors.textSecondary, marginTop: 4 },
   card: {

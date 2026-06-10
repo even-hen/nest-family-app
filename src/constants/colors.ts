@@ -52,7 +52,7 @@ export const darkColors = {
   tabInactive: '#5E5A80',
 };
 
-export const Fonts = {
+const Fonts = {
   regular: Platform.OS === 'web' ? 'Outfit, System' : 'Outfit-Regular',
   medium: Platform.OS === 'web' ? 'Outfit, System' : 'Outfit-Medium',
   semibold: Platform.OS === 'web' ? 'Outfit, System' : 'Outfit-SemiBold',
@@ -92,5 +92,5 @@ export const lightColors = {
 };
 
 export type ThemeColors = typeof darkColors;
-export const Colors = darkColors; // Fallback
+const Colors = darkColors; // Fallback
 
