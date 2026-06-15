@@ -25,7 +25,7 @@ export const darkColors = {
   bgInput: '#2A2640',
 
   // Borders
-  border: '#2E2A45',
+  border: 'rgb(94, 90, 128)',
   borderLight: '#3D3860',
 
   // Text
