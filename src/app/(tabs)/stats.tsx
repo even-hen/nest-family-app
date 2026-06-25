@@ -17,6 +17,7 @@ import { User, UserType } from '../../types';
 import { getTypeColor } from '../../utils/colors';
 import { USER_TYPES } from '../../constants/domain';
 import { mapUser, mapAssignment, mapTask } from '../../utils/supabaseMappers';
+import { syncLocalNotifications } from '../../lib/notifications';
 
 interface WeekStat {
   userId: string;
@@ -72,6 +73,7 @@ export default function StatsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [detailUser, setDetailUser] = useState<{ id: string; name: string } | null>(null);
   const [detailStatus, setDetailStatus] = useState<'done' | 'skipped' | 'pending' | null>(null);
+  const [markingId, setMarkingId] = useState<string | null>(null);
 
   // Edit Modal States
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -254,6 +256,44 @@ export default function StatsScreen() {
         },
       },
     ]);
+  };
+
+  const handleMarkDone = async (id: string) => {
+    setMarkingId(id);
+    try {
+      const { error } = await supabase
+        .from('assignments')
+        .update({
+          status: 'done',
+          done_at: new Date().toISOString(),
+          skipped_at: null,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Update state locally so that changes appear instantly in the UI
+      setAllAssignments((prev) =>
+        prev.map((a) =>
+          a.id === id
+            ? { ...a, status: 'done', doneAt: new Date(), skippedAt: null }
+            : a
+        )
+      );
+
+      // Recompute all the stats and user point totals
+      await loadStats();
+
+      // Sync local notifications
+      if (user) {
+        syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
+      }
+    } catch (e) {
+      console.error(e);
+      AppAlert.alert('Error', 'Could not update task status');
+    } finally {
+      setMarkingId(null);
+    }
   };
 
   const formatAssignmentDate = useCallback((dateStr: string): string => {
@@ -491,6 +531,26 @@ export default function StatsScreen() {
                           <Text style={styles.modalCardTitle}>{a.title}</Text>
                           <Text style={styles.modalCardPoints}>{a.complexity} pts</Text>
                         </View>
+                        {isAdult && detailStatus === 'skipped' && (
+                          <TouchableOpacity
+                            style={[
+                              styles.markDoneBtn,
+                              markingId === a.id && styles.btnDisabled
+                            ]}
+                            onPress={() => handleMarkDone(a.id)}
+                            disabled={markingId !== null}
+                            activeOpacity={0.7}
+                          >
+                            {markingId === a.id ? (
+                              <ActivityIndicator size="small" color="#fff" style={{ height: 16, width: 62 }} />
+                            ) : (
+                              <>
+                                <Ionicons name="checkmark-circle-outline" size={14} color="#fff" style={{ marginRight: 4 }} />
+                                <Text style={styles.markDoneBtnText}>Mark Done</Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                        )}
                       </View>
                     ))}
                   </View>
@@ -650,6 +710,22 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   modalCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   modalCardTitle: { fontSize: 16, fontWeight: '500', color: Colors.textPrimary, flex: 1, marginRight: Spacing.sm },
   modalCardPoints: { fontSize: 13, fontWeight: '600', color: 'rgb(255, 179, 71)' },
+  markDoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.success,
+    borderRadius: Radius.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginTop: Spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  markDoneBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   modalEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80 },
   modalEmptyText: { fontSize: 15, color: Colors.textMuted, fontWeight: '500' },
 
