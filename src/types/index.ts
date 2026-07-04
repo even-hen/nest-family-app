@@ -43,6 +43,8 @@ export interface Task {
   assignedTo: string | null; // userId or null (unassigned)
   auto: boolean; // true if auto assignee is enabled, false if manually assigned
   isActive: boolean;
+  frequency: 'weekly' | 'biweekly';
+  biweeklyParity?: 'even' | 'odd' | null;
   createdBy: string;
   createdAt: Date;
 }

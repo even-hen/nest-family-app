@@ -39,6 +39,8 @@ export function mapTask(row: any): Task {
     assignedTo: row.assigned_to,
     auto: row.auto,
     isActive: row.is_active,
+    frequency: row.frequency || 'weekly',
+    biweeklyParity: row.biweekly_parity || null,
     createdBy: row.created_by,
     createdAt: row.created_at ? new Date(row.created_at) : new Date(),
   };

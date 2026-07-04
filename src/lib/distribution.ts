@@ -132,3 +132,36 @@ function calculateResourceUsage(
   if (userShare === 0) return 0;
   return Math.round((assignedCost / userShare) * 100);
 }
+
+/**
+ * Greedy partition algorithm to distribute active biweekly tasks between even and odd weeks.
+ * Balance is achieved by sorting active biweekly tasks by complexity descending,
+ * and assigning each to the week type ('even' or 'odd') that currently has the smaller
+ * total complexity sum.
+ */
+export function balanceBiweeklyTasks(tasks: Task[]): Task[] {
+  const biweeklyTasks = tasks.filter((t) => t.isActive && t.frequency === 'biweekly');
+  const sorted = [...biweeklyTasks].sort((a, b) => b.complexity - a.complexity);
+
+  let evenSum = 0;
+  let oddSum = 0;
+
+  const parities: Record<string, 'even' | 'odd'> = {};
+  for (const task of sorted) {
+    if (evenSum <= oddSum) {
+      parities[task.id] = 'even';
+      evenSum += task.complexity;
+    } else {
+      parities[task.id] = 'odd';
+      oddSum += task.complexity;
+    }
+  }
+
+  return tasks.map((t) => {
+    if (t.isActive && t.frequency === 'biweekly') {
+      return { ...t, biweeklyParity: parities[t.id] };
+    }
+    return { ...t, biweeklyParity: null };
+  });
+}
+

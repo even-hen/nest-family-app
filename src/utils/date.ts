@@ -46,3 +46,17 @@ function getTimeOfDay(): string {
 export function formatDate(d: Date): string {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
+
+/**
+ * Calculates whether a Monday ISO date string belongs to an 'even' or 'odd' week
+ * relative to a fixed epoch Monday: January 5, 2026.
+ */
+export function getWeekParity(weekStartStr: string): 'even' | 'odd' {
+  const baseDate = new Date('2026-01-05T00:00:00.000Z');
+  const targetDate = new Date(`${weekStartStr}T00:00:00.000Z`);
+  const diffTime = targetDate.getTime() - baseDate.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  const diffWeeks = Math.round(diffDays / 7);
+  return Math.abs(diffWeeks) % 2 === 0 ? 'even' : 'odd';
+}
+

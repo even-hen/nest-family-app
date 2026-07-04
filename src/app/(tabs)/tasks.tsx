@@ -25,10 +25,10 @@ import { supabase } from '../../lib/supabase';
 import { syncLocalNotifications } from '../../lib/notifications';
 import { Task, User, UserType } from '../../types';
 import { getTypeColor } from '../../utils/colors';
-import { getMondayISO } from '../../utils/date';
+import { getMondayISO, getWeekParity } from '../../utils/date';
 import { mapTask, mapAssignment, mapUser } from '../../utils/supabaseMappers';
 import { useTasksData } from '../../hooks/useTasksData';
-import { syncWeeklyAssignments, deletePendingAssignmentsForTask } from '../../lib/assignmentService';
+import { syncWeeklyAssignments, deletePendingAssignmentsForTask, rebalanceAndSyncBiweeklyTasks } from '../../lib/assignmentService';
 
 function TaskCard({
   task, users, onEdit, canEdit,
@@ -38,6 +38,11 @@ function TaskCard({
 }) {
   const { Colors } = useAppTheme();
   const styles = useMemo(() => getStyles(Colors), [Colors]);
+  
+  const currentWeekParity = getWeekParity(getMondayISO(new Date()));
+  const isBiweekly = task.frequency === 'biweekly';
+  const isActiveThisWeek = isBiweekly && task.biweeklyParity === currentWeekParity;
+
   return (
     <View style={[styles.card, !task.isActive && styles.cardInactive]}>
       <View style={styles.cardHeader}>
@@ -49,6 +54,13 @@ function TaskCard({
           )}
           <Text style={[styles.cardTitle, !task.isActive && styles.textMuted]}>{task.title}</Text>
           <Text style={styles.cardPoints}>{task.complexity} pts</Text>
+          {isBiweekly && (
+            <View style={[styles.biweeklyBadge, { backgroundColor: isActiveThisWeek ? Colors.success + '15' : Colors.textMuted + '15', borderColor: isActiveThisWeek ? Colors.success + '40' : Colors.textMuted + '40', borderWidth: 1 }]}>
+              <Text style={[styles.biweeklyBadgeText, { color: isActiveThisWeek ? Colors.success : Colors.textMuted }]}>
+                {isActiveThisWeek ? 'Active this week' : 'Next week'}
+              </Text>
+            </View>
+          )}
         </View>
         {canEdit && (
           <View style={styles.cardActions}>
@@ -102,6 +114,7 @@ const EMPTY_FORM = {
   title: '', emoji: null as string | null, complexity: '10',
   weekDays: [...ALL_WEEK_DAYS] as number[], availableFor: [...USER_TYPES] as UserType[],
   assignedTo: null as string | null, isActive: true,
+  frequency: 'weekly' as 'weekly' | 'biweekly',
 };
 
 const CHORE_EMOJIS = ['🍳', '🍲', '🥗', '🍽️', '🪞', '🚽', '🛁', '🚿', '🪠', '🧻', '🧹', '🗑️', '🧤', '💡', '🌱', '🌻', '🛒', '🛏️', '🧸'];
@@ -153,6 +166,7 @@ export default function TasksScreen() {
       title: t.title, emoji: t.emoji || null, complexity: String(t.complexity),
       weekDays: t.weekDays || [], availableFor: t.availableFor,
       assignedTo: t.auto ? null : t.assignedTo, isActive: t.isActive,
+      frequency: t.frequency || 'weekly',
     });
     setModalVisible(true);
   };
@@ -184,6 +198,7 @@ export default function TasksScreen() {
           assignedTo: null,
           auto: true,
           isActive: true,
+          frequency: form.frequency as 'weekly' | 'biweekly',
           createdBy: user.id,
           createdAt: new Date(),
         });
@@ -208,9 +223,11 @@ export default function TasksScreen() {
         assigned_to: finalAssignedTo,
         auto,
         is_active: form.isActive,
+        frequency: form.frequency,
       };
 
       let savedTaskId = '';
+      let savedBiweeklyParity = editingTask ? editingTask.biweeklyParity : null;
       if (editingTask) {
         savedTaskId = editingTask.id;
         const { error } = await supabase.from('tasks').update(data).eq('id', editingTask.id);
@@ -223,6 +240,7 @@ export default function TasksScreen() {
         if (error) throw error;
         if (!newDbTask) throw new Error('Failed to create task record');
         savedTaskId = newDbTask.id;
+        savedBiweeklyParity = newDbTask.biweekly_parity || null;
       }
 
       await syncWeeklyAssignments({
@@ -233,7 +251,12 @@ export default function TasksScreen() {
         weekDays: activeDays,
         assignedTo: finalAssignedTo,
         isActive: form.isActive,
+        frequency: data.frequency as 'weekly' | 'biweekly',
+        biweeklyParity: savedBiweeklyParity,
       });
+
+      // Rebalance all biweekly tasks in the group to maintain complexity parity
+      await rebalanceAndSyncBiweeklyTasks(user.groupId);
 
       await loadData();
       setModalVisible(false);
@@ -258,6 +281,9 @@ export default function TasksScreen() {
             if (delTaskErr) throw delTaskErr;
 
             await deletePendingAssignmentsForTask(id);
+
+            // Rebalance remaining biweekly tasks
+            await rebalanceAndSyncBiweeklyTasks(user.groupId);
 
             await loadData();
             setModalVisible(false);
@@ -330,8 +356,13 @@ export default function TasksScreen() {
             weekDays: task.weekDays,
             assignedTo: item.assignedTo,
             isActive: task.isActive,
+            frequency: task.frequency,
+            biweeklyParity: task.biweeklyParity,
           });
         }
+
+        // Rebalance biweekly tasks after mixing to ensure sync is complete
+        await rebalanceAndSyncBiweeklyTasks(user.groupId);
 
         await loadData();
         if (user) {
@@ -456,6 +487,22 @@ export default function TasksScreen() {
               style={styles.input} value={form.complexity} onChangeText={(v) => setForm((p) => ({ ...p, complexity: v }))}
               keyboardType="number-pad" placeholder="10" placeholderTextColor={Colors.textMuted}
             />
+
+            <Text style={styles.label}>Frequency</Text>
+            <View style={styles.segRow}>
+              <TouchableOpacity
+                style={[styles.segBtn, form.frequency === 'weekly' && styles.segBtnActive]}
+                onPress={() => setForm((p) => ({ ...p, frequency: 'weekly' }))}
+              >
+                <Text style={[styles.segText, form.frequency === 'weekly' && styles.segTextActive]}>Weekly</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.segBtn, form.frequency === 'biweekly' && styles.segBtnActive]}
+                onPress={() => setForm((p) => ({ ...p, frequency: 'biweekly' }))}
+              >
+                <Text style={[styles.segText, form.frequency === 'biweekly' && styles.segTextActive]}>Every 2 weeks</Text>
+              </TouchableOpacity>
+            </View>
 
             <Text style={styles.label}>Active Days</Text>
             <View style={styles.daysRow}>
@@ -728,5 +775,15 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   },
   cardEmoji: {
     fontSize: 18,
+  },
+  biweeklyBadge: {
+    borderRadius: Radius.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  biweeklyBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 });
