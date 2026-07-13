@@ -287,12 +287,11 @@ export default function TasksScreen() {
 
             await deletePendingAssignmentsForTask(id);
 
-            // Rebalance remaining biweekly tasks
-            await rebalanceAndSyncBiweeklyTasks(user.groupId!);
-
-            await loadData();
-            setModalVisible(false);
-            if (user) {
+            if (user?.groupId) {
+              // Rebalance remaining biweekly tasks
+              await rebalanceAndSyncBiweeklyTasks(user.groupId);
+              await loadData();
+              setModalVisible(false);
               syncLocalNotifications(user.id, user.groupId, user.type, user.notificationTime);
             }
           } catch (e: any) {
