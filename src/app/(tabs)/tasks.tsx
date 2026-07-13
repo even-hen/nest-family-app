@@ -407,8 +407,30 @@ export default function TasksScreen() {
     });
   }, [tasks, searchQuery, groupUsers]);
 
-  const totalTasksCount = tasks.length;
-  const totalPoints = tasks.reduce((sum, t) => sum + (t.complexity || 0), 0);
+  const currentWeekParity = getWeekParity(getMondayISO(new Date()));
+
+  const totalTasksCount = tasks.filter((t) => {
+    if (!t.isActive) return false;
+    if (t.frequency === 'biweekly') {
+      return t.biweeklyParity === currentWeekParity;
+    }
+    return true;
+  }).length;
+
+  const weeklyPoints = tasks.reduce((sum, t) => {
+    if (!t.isActive) return sum;
+    const daysCount = t.weekDays?.length || 0;
+    if (t.frequency === 'biweekly') {
+      const isActiveThisWeek = t.biweeklyParity === currentWeekParity;
+      if (isActiveThisWeek) {
+        return sum + (t.complexity * daysCount);
+      }
+    } else {
+      return sum + (t.complexity * daysCount);
+    }
+    return sum;
+  }, 0);
+
 
   if (loading) {
     return <TasksScreenSkeleton />;
@@ -478,23 +500,23 @@ export default function TasksScreen() {
         {filteredTasks.map((t) => (
           <TaskCard key={t.id} task={t} users={groupUsers} onEdit={openEdit} canEdit={isAdult} />
         ))}
-      </ScrollView>
 
-      {/* Bottom Summary Bar */}
-      <View style={styles.footerSummary}>
-        <View style={styles.footerChip}>
-          <Ionicons name="list-outline" size={16} color={Colors.primary} />
-          <Text style={styles.footerChipText}>
-            Total Tasks: <Text style={styles.footerChipValue}>{totalTasksCount}</Text>
-          </Text>
+        {/* Bottom Summary Bar */}
+        <View style={styles.footerSummary}>
+          <View style={styles.footerChip}>
+            <Ionicons name="list-outline" size={16} color={Colors.primary} />
+            <Text style={styles.footerChipText}>
+              Total Tasks: <Text style={styles.footerChipValue}>{totalTasksCount}</Text>
+            </Text>
+          </View>
+          <View style={styles.footerChip}>
+            <Ionicons name="flash-outline" size={16} color="rgb(255, 179, 71)" />
+            <Text style={styles.footerChipText}>
+              Weekly Points: <Text style={[styles.footerChipValue, { color: 'rgb(255, 179, 71)' }]}>{weeklyPoints}</Text>
+            </Text>
+          </View>
         </View>
-        <View style={styles.footerChip}>
-          <Ionicons name="flash-outline" size={16} color="rgb(255, 179, 71)" />
-          <Text style={styles.footerChipText}>
-            Total Points: <Text style={[styles.footerChipValue, { color: 'rgb(255, 179, 71)' }]}>{totalPoints}</Text>
-          </Text>
-        </View>
-      </View>
+      </ScrollView>
 
       {/* Modal */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
@@ -657,7 +679,7 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   list: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
-    paddingBottom: 100,
+    paddingBottom: Spacing.lg,
     gap: Spacing.sm,
   },
   card: {
@@ -822,9 +844,7 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.md,
     paddingVertical: Spacing.sm,
-    backgroundColor: Colors.bgCard,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    marginTop: Spacing.md,
   },
   footerChip: {
     flexDirection: 'row',
