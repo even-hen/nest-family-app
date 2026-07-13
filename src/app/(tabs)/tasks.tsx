@@ -185,38 +185,50 @@ export default function TasksScreen() {
       if (auto && form.isActive) {
         const tempTaskId = editingTask ? editingTask.id : 'temp-new-task';
         const currentWeekParity = getWeekParity(getMondayISO(new Date()));
-        const otherActiveTasks = tasks
-          .filter((t) => t.isActive && (editingTask ? t.id !== editingTask.id : true))
-          .map((t) => ({
-            ...t,
-            // Biweekly tasks that are in their off-week should not be distributed this week
-            isActive: t.frequency === 'biweekly' ? t.biweeklyParity === currentWeekParity : t.isActive,
+
+        const isBiweekly = form.frequency === 'biweekly';
+        const isCurrentTaskActiveThisWeek = isBiweekly
+          ? (editingTask ? editingTask.biweeklyParity === currentWeekParity : true)
+          : true;
+
+        if (editingTask && isBiweekly && !isCurrentTaskActiveThisWeek) {
+          // If editing an existing biweekly task in its off-week, preserve the current assignee
+          finalAssignedTo = editingTask.assignedTo;
+        } else {
+          // Run distribution normally for weekly tasks, active biweekly tasks, and new biweekly tasks
+          const otherActiveTasks = tasks
+            .filter((t) => t.isActive && (editingTask ? t.id !== editingTask.id : true))
+            .map((t) => ({
+              ...t,
+              // Biweekly tasks that are in their off-week should not be distributed this week
+              isActive: t.frequency === 'biweekly' ? t.biweeklyParity === currentWeekParity : t.isActive,
+            }));
+
+          otherActiveTasks.push({
+            id: tempTaskId,
+            groupId: user.groupId,
+            title: form.title.trim(),
+            complexity: c,
+            weekDays: activeDays,
+            availableFor: form.availableFor.length === 0 ? [...USER_TYPES] : form.availableFor,
+            assignedTo: null,
+            auto: true,
+            isActive: true,
+            frequency: form.frequency as 'weekly' | 'biweekly',
+            createdBy: user.id,
+            createdAt: new Date(),
+          });
+
+          const assignableUsers = fullUsersList.map((u) => ({
+            id: u.id,
+            type: u.type,
+            resource: u.resource,
           }));
 
-        otherActiveTasks.push({
-          id: tempTaskId,
-          groupId: user.groupId,
-          title: form.title.trim(),
-          complexity: c,
-          weekDays: activeDays,
-          availableFor: form.availableFor.length === 0 ? [...USER_TYPES] : form.availableFor,
-          assignedTo: null,
-          auto: true,
-          isActive: true,
-          frequency: form.frequency as 'weekly' | 'biweekly',
-          createdBy: user.id,
-          createdAt: new Date(),
-        });
-
-        const assignableUsers = fullUsersList.map((u) => ({
-          id: u.id,
-          type: u.type,
-          resource: u.resource,
-        }));
-
-        const { assignments: distResult } = autoDistributeTasks(otherActiveTasks, assignableUsers);
-        const matched = distResult.find((a) => a.taskId === tempTaskId);
-        finalAssignedTo = matched ? matched.assignedTo : null;
+          const { assignments: distResult } = autoDistributeTasks(otherActiveTasks, assignableUsers);
+          const matched = distResult.find((a) => a.taskId === tempTaskId);
+          finalAssignedTo = matched ? matched.assignedTo : null;
+        }
       }
 
       const data = {
