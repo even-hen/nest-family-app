@@ -141,7 +141,12 @@ function calculateResourceUsage(
  */
 export function balanceBiweeklyTasks(tasks: Task[]): Task[] {
   const biweeklyTasks = tasks.filter((t) => t.isActive && t.frequency === 'biweekly');
-  const sorted = [...biweeklyTasks].sort((a, b) => b.complexity - a.complexity);
+  const sorted = [...biweeklyTasks].sort((a, b) => {
+    if (b.complexity !== a.complexity) {
+      return b.complexity - a.complexity;
+    }
+    return a.id.localeCompare(b.id);
+  });
 
   let evenSum = 0;
   let oddSum = 0;

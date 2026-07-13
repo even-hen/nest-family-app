@@ -344,7 +344,7 @@ export default function TasksScreen() {
         // Biweekly tasks in their off-week must not be redistributed this week
         const tasksForDistribution = fetchedTasks.map((t) => ({
           ...t,
-          isActive: t.frequency === 'biweekly' ? t.biweeklyParity === currentWeekParity : t.isActive,
+          isActive: t.frequency === 'biweekly' ? (t.isActive && t.biweeklyParity === currentWeekParity) : t.isActive,
         }));
 
         const { assignments: distResult } = autoDistributeTasks(tasksForDistribution, assignableUsers, true);
@@ -406,6 +406,9 @@ export default function TasksScreen() {
       return titleMatches || assigneeMatches;
     });
   }, [tasks, searchQuery, groupUsers]);
+
+  const totalTasksCount = tasks.length;
+  const totalPoints = tasks.reduce((sum, t) => sum + (t.complexity || 0), 0);
 
   if (loading) {
     return <TasksScreenSkeleton />;
@@ -476,6 +479,22 @@ export default function TasksScreen() {
           <TaskCard key={t.id} task={t} users={groupUsers} onEdit={openEdit} canEdit={isAdult} />
         ))}
       </ScrollView>
+
+      {/* Bottom Summary Bar */}
+      <View style={styles.footerSummary}>
+        <View style={styles.footerChip}>
+          <Ionicons name="list-outline" size={16} color={Colors.primary} />
+          <Text style={styles.footerChipText}>
+            Total Tasks: <Text style={styles.footerChipValue}>{totalTasksCount}</Text>
+          </Text>
+        </View>
+        <View style={styles.footerChip}>
+          <Ionicons name="flash-outline" size={16} color="rgb(255, 179, 71)" />
+          <Text style={styles.footerChipText}>
+            Total Points: <Text style={[styles.footerChipValue, { color: 'rgb(255, 179, 71)' }]}>{totalPoints}</Text>
+          </Text>
+        </View>
+      </View>
 
       {/* Modal */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
@@ -796,5 +815,35 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
   biweeklyBadgeText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  footerSummary: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  footerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.bgInput,
+    borderRadius: Radius.full,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  footerChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  footerChipValue: {
+    fontWeight: '700',
+    color: Colors.textPrimary,
   },
 });

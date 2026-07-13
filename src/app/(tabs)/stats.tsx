@@ -172,13 +172,16 @@ export default function StatsScreen() {
         loadedAssignments.push(assignment);
         const uid = assignment.assignedTo;
         if (!statsMap[uid]) return;
+        const complexity = assignment.complexity ?? 0;
         if (assignment.status === 'done') {
-          statsMap[uid].done++;
-          statsMap[uid].totalComplexityDone += assignment.complexity ?? 0;
+          statsMap[uid].done += complexity;
+          statsMap[uid].totalComplexityDone += complexity;
         } else if (assignment.status === 'skipped') {
-          statsMap[uid].skipped++;
+          statsMap[uid].skipped += complexity;
+          statsMap[uid].totalComplexityDone += complexity;
         } else {
-          statsMap[uid].pending++;
+          statsMap[uid].pending += complexity;
+          statsMap[uid].totalComplexityDone += complexity;
         }
       });
 
@@ -456,7 +459,7 @@ export default function StatsScreen() {
 
                 <View style={[styles.pill, { backgroundColor: Colors.primary + '20' }]}>
                   <Text style={styles.pillNum}>{s.totalComplexityDone}</Text>
-                  <Text style={[styles.pillLabel, { color: Colors.primary }]}>Points</Text>
+                  <Text style={[styles.pillLabel, { color: Colors.primary }]}>Total Pts</Text>
                 </View>
               </View>
 
