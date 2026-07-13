@@ -23,10 +23,10 @@ import { TasksScreenSkeleton } from '../../components/skeleton';
 import { autoDistributeTasks } from '../../lib/distribution';
 import { supabase } from '../../lib/supabase';
 import { syncLocalNotifications } from '../../lib/notifications';
-import { Task, User, UserType } from '../../types';
+import { Task, UserType } from '../../types';
 import { getTypeColor } from '../../utils/colors';
 import { getMondayISO, getWeekParity } from '../../utils/date';
-import { mapTask, mapAssignment, mapUser } from '../../utils/supabaseMappers';
+import { mapTask, mapUser } from '../../utils/supabaseMappers';
 import { useTasksData } from '../../hooks/useTasksData';
 import { syncWeeklyAssignments, deletePendingAssignmentsForTask, rebalanceAndSyncBiweeklyTasks } from '../../lib/assignmentService';
 
@@ -184,9 +184,14 @@ export default function TasksScreen() {
 
       if (auto && form.isActive) {
         const tempTaskId = editingTask ? editingTask.id : 'temp-new-task';
+        const currentWeekParity = getWeekParity(getMondayISO(new Date()));
         const otherActiveTasks = tasks
           .filter((t) => t.isActive && (editingTask ? t.id !== editingTask.id : true))
-          .map((t) => ({ ...t }));
+          .map((t) => ({
+            ...t,
+            // Biweekly tasks that are in their off-week should not be distributed this week
+            isActive: t.frequency === 'biweekly' ? t.biweeklyParity === currentWeekParity : t.isActive,
+          }));
 
         otherActiveTasks.push({
           id: tempTaskId,
@@ -283,7 +288,7 @@ export default function TasksScreen() {
             await deletePendingAssignmentsForTask(id);
 
             // Rebalance remaining biweekly tasks
-            await rebalanceAndSyncBiweeklyTasks(user.groupId);
+            await rebalanceAndSyncBiweeklyTasks(user.groupId!);
 
             await loadData();
             setModalVisible(false);
@@ -336,7 +341,14 @@ export default function TasksScreen() {
           id: u.id, type: u.type, resource: u.resource,
         }));
 
-        const { assignments: distResult } = autoDistributeTasks(fetchedTasks, assignableUsers, true);
+        const currentWeekParity = getWeekParity(getMondayISO(new Date()));
+        // Biweekly tasks in their off-week must not be redistributed this week
+        const tasksForDistribution = fetchedTasks.map((t) => ({
+          ...t,
+          isActive: t.frequency === 'biweekly' ? t.biweeklyParity === currentWeekParity : t.isActive,
+        }));
+
+        const { assignments: distResult } = autoDistributeTasks(tasksForDistribution, assignableUsers, true);
 
         for (const item of distResult) {
           const task = fetchedTasks.find((t) => t.id === item.taskId);
@@ -362,7 +374,7 @@ export default function TasksScreen() {
         }
 
         // Rebalance biweekly tasks after mixing to ensure sync is complete
-        await rebalanceAndSyncBiweeklyTasks(user.groupId);
+        await rebalanceAndSyncBiweeklyTasks(user.groupId!);
 
         await loadData();
         if (user) {
