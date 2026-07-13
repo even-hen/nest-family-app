@@ -13,22 +13,22 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { AppAlert } from '../../utils/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TasksScreenSkeleton } from '../../components/skeleton';
 import { Radius, Spacing, ThemeColors } from '../../constants/colors';
 import { ALL_WEEK_DAYS, DAYS_OF_WEEK, USER_TYPES } from '../../constants/domain';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme } from '../../contexts/ThemeContext';
-import { TasksScreenSkeleton } from '../../components/skeleton';
+import { useTasksData } from '../../hooks/useTasksData';
+import { deletePendingAssignmentsForTask, rebalanceAndSyncBiweeklyTasks, syncWeeklyAssignments } from '../../lib/assignmentService';
 import { autoDistributeTasks } from '../../lib/distribution';
-import { supabase } from '../../lib/supabase';
 import { syncLocalNotifications } from '../../lib/notifications';
+import { supabase } from '../../lib/supabase';
 import { Task, UserType } from '../../types';
+import { AppAlert } from '../../utils/alert';
 import { getTypeColor } from '../../utils/colors';
 import { getMondayISO, getWeekParity } from '../../utils/date';
 import { mapTask, mapUser } from '../../utils/supabaseMappers';
-import { useTasksData } from '../../hooks/useTasksData';
-import { syncWeeklyAssignments, deletePendingAssignmentsForTask, rebalanceAndSyncBiweeklyTasks } from '../../lib/assignmentService';
 
 function TaskCard({
   task, users, onEdit, canEdit,
@@ -38,7 +38,7 @@ function TaskCard({
 }) {
   const { Colors } = useAppTheme();
   const styles = useMemo(() => getStyles(Colors), [Colors]);
-  
+
   const currentWeekParity = getWeekParity(getMondayISO(new Date()));
   const isBiweekly = task.frequency === 'biweekly';
   const isActiveThisWeek = isBiweekly && task.biweeklyParity === currentWeekParity;
@@ -124,19 +124,19 @@ export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => getStyles(Colors, insets), [Colors, insets]);
   const { user } = useAuth();
-  
-  const { 
-    tasks, 
-    groupUsers, 
-    fullUsersList, 
-    loading, 
-    refreshing, 
+
+  const {
+    tasks,
+    groupUsers,
+    fullUsersList,
+    loading,
+    refreshing,
     loadData,
-    refresh 
+    refresh
   } = useTasksData({ groupId: user?.groupId ?? undefined });
 
-  const usersList = useMemo(() => 
-    fullUsersList.map(u => ({ id: u.id, name: u.name })), 
+  const usersList = useMemo(() =>
+    fullUsersList.map(u => ({ id: u.id, name: u.name })),
     [fullUsersList]
   );
 
@@ -155,8 +155,8 @@ export default function TasksScreen() {
     }, [loadData])
   );
 
-  const onRefresh = async () => { 
-    await refresh(); 
+  const onRefresh = async () => {
+    await refresh();
   };
 
   const openCreate = () => { setEditingTask(null); setForm({ ...EMPTY_FORM }); setModalVisible(true); };
@@ -518,7 +518,7 @@ export default function TasksScreen() {
           <View style={styles.footerChip}>
             <Ionicons name="list-outline" size={16} color={Colors.primary} />
             <Text style={styles.footerChipText}>
-              Total Tasks: <Text style={styles.footerChipValue}>{totalTasksCount}</Text>
+              Weekly Tasks: <Text style={styles.footerChipValue}>{totalTasksCount}</Text>
             </Text>
           </View>
           <View style={styles.footerChip}>
@@ -862,7 +862,7 @@ const getStyles = (Colors: ThemeColors, insets?: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: Colors.bgInput,
+    backgroundColor: Colors.bgCard,
     borderRadius: Radius.full,
     paddingHorizontal: 16,
     paddingVertical: 8,
